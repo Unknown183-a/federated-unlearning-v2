@@ -1,0 +1,300 @@
+From dff7cbcb546e4fa4175ea0f11b56b376ec5df6ff Mon Sep 17 00:00:00 2001
+From: Claude <agent@example.com>
+Date: Tue, 15 Sep 2026 17:22:26 +0000
+Subject: [PATCH] Phase 04: client data distribution view (cards, heatmap)
+
+---
+ README.md                                     |   4 +-
+ frontend/src/components/ClientCard.jsx        |  49 +++++++++
+ frontend/src/components/ClientCardGrid.jsx    |  23 ++++
+ .../src/components/DistributionHeatmap.jsx    | 102 ++++++++++++++++++
+ frontend/src/pages/DataDistribution.jsx       |  11 +-
+ phase-04-client-distribution-view/README.md   |  13 +--
+ 6 files changed, 188 insertions(+), 14 deletions(-)
+ create mode 100644 frontend/src/components/ClientCard.jsx
+ create mode 100644 frontend/src/components/ClientCardGrid.jsx
+ create mode 100644 frontend/src/components/DistributionHeatmap.jsx
+
+diff --git a/README.md b/README.md
+index 0e8f4b2..1785def 100644
+--- a/README.md
++++ b/README.md
+@@ -19,7 +19,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
+ | 01 | [`phase-01-dataset-layer/`](./phase-01-dataset-layer/README.md) | Dataset Layer | Complete |
+ | 02 | [`phase-02-experiment-configuration/`](./phase-02-experiment-configuration/README.md) | Experiment Configuration | Complete |
+ | 03 | [`phase-03-data-partitioning/`](./phase-03-data-partitioning/README.md) | Data Partitioning Engine | Complete |
+-| 04 | [`phase-04-client-distribution-view/`](./phase-04-client-distribution-view/README.md) | Client Data Distribution View | Not Started |
++| 04 | [`phase-04-client-distribution-view/`](./phase-04-client-distribution-view/README.md) | Client Data Distribution View | Complete |
+ | 05 | [`phase-05-federated-learning-engine/`](./phase-05-federated-learning-engine/README.md) | Federated Learning Engine | Not Started |
+ | 06 | [`phase-06-fl-visualization/`](./phase-06-fl-visualization/README.md) | Federated Learning Visualization & Metrics | Not Started |
+ | 07 | [`phase-07-global-model-target-selection/`](./phase-07-global-model-target-selection/README.md) | Global Model & Target Client Selection | Not Started |
+@@ -38,7 +38,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
+ - [x] Phase 01 — Dataset Layer
+ - [x] Phase 02 — Experiment Configuration
+ - [x] Phase 03 — Data Partitioning Engine
+-- [ ] Phase 04 — Client Data Distribution View
++- [x] Phase 04 — Client Data Distribution View
+ - [ ] Phase 05 — Federated Learning Engine
+ - [ ] Phase 06 — Federated Learning Visualization & Metrics
+ - [ ] Phase 07 — Global Model & Target Client Selection
+diff --git a/frontend/src/components/ClientCard.jsx b/frontend/src/components/ClientCard.jsx
+new file mode 100644
+index 0000000..197a517
+--- /dev/null
++++ b/frontend/src/components/ClientCard.jsx
+@@ -0,0 +1,49 @@
++const STRATEGY_LABEL = {
++  iid: "IID",
++  non_iid: "Non-IID",
++};
++
++// Top classes by sample count for this client (Dashboard Spec Ch.7.1
++// "Dominant Classes"). class_counts is keyed by class id -> sample count.
++function dominantClasses(classCounts, limit = 3) {
++  return Object.entries(classCounts)
++    .sort((a, b) => b[1] - a[1])
++    .slice(0, limit)
++    .map(([classId]) => Number(classId));
++}
++
++export default function ClientCard({ client, strategy }) {
++  const dominant = dominantClasses(client.class_counts);
++
++  return (
++    <article
++      aria-label={`Client ${client.client_id}`}
++      style={{ border: "1px solid #ccc", borderRadius: "6px", padding: "0.75rem" }}
++    >
++      <h3 style={{ marginTop: 0 }}>Client {client.client_id}</h3>
++      <dl style={{ margin: 0 }}>
++        <dt>Samples</dt>
++        <dd>{client.num_samples.toLocaleString()}</dd>
++
++        <dt>Classes</dt>
++        <dd>{client.num_classes_present}</dd>
++
++        <dt>Dominant Classes</dt>
++        <dd>
++          {dominant.length ? (
++            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
++              {dominant.map((c) => (
++                <li key={c}>Class {c}</li>
++              ))}
++            </ul>
++          ) : (
++            "None"
++          )}
++        </dd>
++
++        <dt>Distribution</dt>
++        <dd>{STRATEGY_LABEL[strategy] || strategy}</dd>
++      </dl>
++    </article>
++  );
++}
+diff --git a/frontend/src/components/ClientCardGrid.jsx b/frontend/src/components/ClientCardGrid.jsx
+new file mode 100644
+index 0000000..8c3ba90
+--- /dev/null
++++ b/frontend/src/components/ClientCardGrid.jsx
+@@ -0,0 +1,23 @@
++import ClientCard from "./ClientCard.jsx";
++
++// Renders one card per client (Dashboard Spec Ch.7.1). Uses an
++// auto-filling grid so this reads correctly whether there are 5, 10,
++// or 20 clients (Phase 04 acceptance criteria).
++export default function ClientCardGrid({ partition }) {
++  return (
++    <section aria-labelledby="client-cards-heading">
++      <h2 id="client-cards-heading">Client Cards</h2>
++      <div
++        style={{
++          display: "grid",
++          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
++          gap: "0.75rem",
++        }}
++      >
++        {partition.clients.map((client) => (
++          <ClientCard key={client.client_id} client={client} strategy={partition.strategy} />
++        ))}
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/components/DistributionHeatmap.jsx b/frontend/src/components/DistributionHeatmap.jsx
+new file mode 100644
+index 0000000..be476fc
+--- /dev/null
++++ b/frontend/src/components/DistributionHeatmap.jsx
+@@ -0,0 +1,102 @@
++// Class distribution heatmap (Dashboard Spec Ch.7.2). Columns beyond
++// this width are grouped into labeled blocks with a scrollable
++// container, which is what keeps a 100-class dataset like CIFAR-100
++// readable (Phase 04 "grouping/scroll" requirement).
++const GROUP_SIZE = 10;
++
++function cellColor(count, maxCount) {
++  if (!count) return "transparent";
++  const alpha = 0.15 + 0.85 * (count / maxCount);
++  return `rgba(37, 99, 235, ${alpha.toFixed(2)})`;
++}
++
++export default function DistributionHeatmap({ partition }) {
++  const { clients, num_classes } = partition;
++  const classes = Array.from({ length: num_classes }, (_, i) => i);
++  const maxCount = Math.max(
++    1,
++    ...clients.flatMap((c) => Object.values(c.class_counts))
++  );
++  const grouped = num_classes > GROUP_SIZE;
++
++  return (
++    <section aria-labelledby="heatmap-heading">
++      <h2 id="heatmap-heading">Class Distribution Heatmap</h2>
++      <p>
++        Each cell is one client&rsquo;s sample count for one class &mdash;
++        darker means more samples. Hover a cell for the exact count.
++        {grouped &&
++          ` Classes are grouped in blocks of ${GROUP_SIZE}; scroll horizontally to see them all.`}
++      </p>
++      <div style={{ overflowX: "auto", maxWidth: "100%" }}>
++        <table style={{ borderCollapse: "collapse", fontSize: "0.75rem" }}>
++          <thead>
++            {grouped && (
++              <tr>
++                <th scope="col"></th>
++                {classes
++                  .filter((c) => c % GROUP_SIZE === 0)
++                  .map((c) => (
++                    <th
++                      key={`group-${c}`}
++                      colSpan={Math.min(GROUP_SIZE, num_classes - c)}
++                      style={{
++                        textAlign: "left",
++                        borderLeft: "2px solid #999",
++                        padding: "0.2rem 0.35rem",
++                        whiteSpace: "nowrap",
++                      }}
++                    >
++                      Classes {c}&ndash;{Math.min(c + GROUP_SIZE, num_classes) - 1}
++                    </th>
++                  ))}
++              </tr>
++            )}
++            <tr>
++              <th scope="col">Client</th>
++              {classes.map((c) => (
++                <th
++                  key={c}
++                  scope="col"
++                  style={{
++                    borderLeft: grouped && c % GROUP_SIZE === 0 ? "2px solid #999" : undefined,
++                    padding: "0.15rem",
++                    fontWeight: "normal",
++                  }}
++                >
++                  {c}
++                </th>
++              ))}
++            </tr>
++          </thead>
++          <tbody>
++            {clients.map((client) => (
++              <tr key={client.client_id}>
++                <th scope="row" style={{ padding: "0.2rem 0.5rem", whiteSpace: "nowrap", textAlign: "left" }}>
++                  Client {client.client_id}
++                </th>
++                {classes.map((c) => {
++                  const count = client.class_counts[c] ?? 0;
++                  return (
++                    <td
++                      key={c}
++                      title={`Client ${client.client_id}, Class ${c}: ${count.toLocaleString()} samples`}
++                      style={{
++                        width: "1.15rem",
++                        height: "1.15rem",
++                        backgroundColor: cellColor(count, maxCount),
++                        borderLeft:
++                          grouped && c % GROUP_SIZE === 0 ? "2px solid #999" : "1px solid #eee",
++                        borderBottom: "1px solid #eee",
++                      }}
++                    />
++                  );
++                })}
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/pages/DataDistribution.jsx b/frontend/src/pages/DataDistribution.jsx
+index 336b203..0d37d20 100644
+--- a/frontend/src/pages/DataDistribution.jsx
++++ b/frontend/src/pages/DataDistribution.jsx
+@@ -1,6 +1,8 @@
+ import { useState } from "react";
+ import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+ import PartitionSummary from "../components/PartitionSummary.jsx";
++import ClientCardGrid from "../components/ClientCardGrid.jsx";
++import DistributionHeatmap from "../components/DistributionHeatmap.jsx";
+ 
+ export default function DataDistribution() {
+   const { config } = useExperimentConfig();
+@@ -64,12 +66,9 @@ export default function DataDistribution() {
+ 
+       {partition && <PartitionSummary partition={partition} />}
+ 
+-      {partition && (
+-        <p>
+-          Per-client cards and the class-distribution heatmap land in Phase
+-          04.
+-        </p>
+-      )}
++      {partition && <ClientCardGrid partition={partition} />}
++
++      {partition && <DistributionHeatmap partition={partition} />}
+     </section>
+   );
+ }
+diff --git a/phase-04-client-distribution-view/README.md b/phase-04-client-distribution-view/README.md
+index 5480641..410d463 100644
+--- a/phase-04-client-distribution-view/README.md
++++ b/phase-04-client-distribution-view/README.md
+@@ -1,7 +1,7 @@
+ # Phase 04 — Client Data Distribution View
+ 
+-> Status: **Not Started**
+-> Implementation: not started at this time — this folder currently holds only the plan.
++> Status: **Complete**
++> Implementation: `ClientCard`, `ClientCardGrid`, and `DistributionHeatmap` in `frontend/src/components/`, wired into `frontend/src/pages/DataDistribution.jsx` alongside the Phase 03 `PartitionSummary`.
+ 
+ ## Goal
+ 
+@@ -20,10 +20,10 @@ Make what each client owns fully visible — per-client cards, the class-distrib
+ 
+ ## Tasks
+ 
+-- [ ] Build the per-client card component (samples, classes, dominant classes, IID status)
+-- [ ] Build the class-distribution heatmap component
+-- [ ] Add grouping/scroll behavior for CIFAR-100's 100 classes
+-- [ ] Build the distribution summary panel (totals, average, most imbalanced client)
++- [x] Build the per-client card component (samples, classes, dominant classes, IID status)
++- [x] Build the class-distribution heatmap component
++- [x] Add grouping/scroll behavior for CIFAR-100's 100 classes
++- [x] Build the distribution summary panel (totals, average, most imbalanced client)
+ 
+ ## Deliverables
+ 
+@@ -43,6 +43,7 @@ Phase 03 (partitioning engine)
+ | Date | Update |
+ |------|--------|
+ | — | Phase not started |
++| — | Client cards, heatmap, and grouping/scroll implemented; wired into Page 3 alongside the existing distribution summary panel |
+ 
+ ---
+ Previous: [Phase 03 — Data Partitioning Engine](../phase-03-data-partitioning/README.md)
+-- 
+2.43.0
+
