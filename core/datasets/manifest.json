@@ -1,0 +1,32 @@
+{
+  "mnist": {
+    "id": "mnist",
+    "name": "MNIST",
+    "description": "Handwritten digits, 0-9.",
+    "image_size": 28,
+    "channels": 1,
+    "num_classes": 10,
+    "num_train": 60000,
+    "num_test": 10000
+  },
+  "cifar10": {
+    "id": "cifar10",
+    "name": "CIFAR-10",
+    "description": "Natural images across 10 object classes.",
+    "image_size": 32,
+    "channels": 3,
+    "num_classes": 10,
+    "num_train": 50000,
+    "num_test": 10000
+  },
+  "cifar100": {
+    "id": "cifar100",
+    "name": "CIFAR-100",
+    "description": "Natural images across 100 object classes.",
+    "image_size": 32,
+    "channels": 3,
+    "num_classes": 100,
+    "num_train": 50000,
+    "num_test": 10000
+  }
+}
