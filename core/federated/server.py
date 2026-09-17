@@ -18,7 +18,11 @@ from core.datasets.base import get_dataset, load_manifest
 from core.federated.client import local_train
 from core.federated.fedavg import federated_average
 from core.federated.model import build_model
-from core.federated.storage import load_fl_history, save_fl_history
+from core.federated.storage import (
+    load_fl_history,
+    save_fl_history,
+    save_model_checkpoint,
+)
 
 
 def _evaluate(model, test_loader, device: str) -> tuple[float, float]:
@@ -162,6 +166,16 @@ def run_federated_training(
     }
 
     save_fl_history(experiment_id, history)
+    # Phase 08 addendum: persist the trained weights too, not just the
+    # round-by-round metrics -- the Gradient Ascent stage needs the
+    # actual global model, not just its accuracy/loss history.
+    save_model_checkpoint(
+        experiment_id,
+        state_dict=global_state,
+        model_id=model_id,
+        channels=channels,
+        num_classes=num_classes,
+    )
     return history
 
 

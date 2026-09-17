@@ -5,6 +5,7 @@ import { getComputeBackend } from "./compute/index.js";
 import datasetsRouter from "./routes/datasets.js";
 import partitionRouter from "./routes/partition.js";
 import trainingRouter from "./routes/training.js";
+import unlearningRouter from "./routes/unlearning.js";
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ const backend = getComputeBackend();
 app.use("/api/datasets", datasetsRouter);
 app.use("/api/partition", partitionRouter);
 app.use("/api/training", trainingRouter);
+app.use("/api/unlearning", unlearningRouter);
 
 // Health-check route (Phase 00 deliverable).
 app.get("/status", async (_req, res) => {
