@@ -6,14 +6,10 @@ import ClientCard from "./ClientCard.jsx";
 export default function ClientCardGrid({ partition }) {
   return (
     <section aria-labelledby="client-cards-heading">
-      <h2 id="client-cards-heading">Client Cards</h2>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-          gap: "0.75rem",
-        }}
-      >
+      <h2 id="client-cards-heading" className="text-base font-semibold text-gray-900">
+        Client Cards
+      </h2>
+      <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
         {partition.clients.map((client) => (
           <ClientCard key={client.client_id} client={client} strategy={partition.strategy} />
         ))}

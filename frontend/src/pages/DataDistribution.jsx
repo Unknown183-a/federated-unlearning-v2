@@ -41,33 +41,41 @@ export default function DataDistribution() {
   }
 
   return (
-    <section>
-      <h1>Data Distribution</h1>
+    <section className="space-y-8">
+      <h1 className="text-2xl font-bold text-gray-900">Data Distribution</h1>
 
       {!canPartition && (
-        <p role="alert">Choose a dataset on Experiment Setup first.</p>
+        <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Choose a dataset on Experiment Setup first.
+        </p>
       )}
 
       {canPartition && (
-        <>
-          <p>
-            Splitting <strong>{config.dataset}</strong> across{" "}
-            <strong>{config.num_clients}</strong> clients (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <p className="text-sm text-gray-700">
+            Splitting <strong className="font-semibold">{config.dataset}</strong> across{" "}
+            <strong className="font-semibold">{config.num_clients}</strong> clients (
             {config.partition_strategy === "iid" ? "IID" : "Non-IID"}, seed{" "}
             {config.seed}).
           </p>
-          <button onClick={runPartitioning} disabled={loading}>
+          <button
+            onClick={runPartitioning}
+            disabled={loading}
+            className="mt-4 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {loading ? "Partitioning…" : "Run Partitioning"}
           </button>
-        </>
+        </div>
       )}
 
-      {error && <p role="alert">Could not partition dataset: {error}</p>}
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          Could not partition dataset: {error}
+        </p>
+      )}
 
       {partition && <PartitionSummary partition={partition} />}
-
       {partition && <ClientCardGrid partition={partition} />}
-
       {partition && <DistributionHeatmap partition={partition} />}
     </section>
   );

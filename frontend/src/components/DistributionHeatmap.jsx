@@ -7,7 +7,7 @@ const GROUP_SIZE = 10;
 function cellColor(count, maxCount) {
   if (!count) return "transparent";
   const alpha = 0.15 + 0.85 * (count / maxCount);
-  return `rgba(37, 99, 235, ${alpha.toFixed(2)})`;
+  return `rgba(79, 70, 229, ${alpha.toFixed(2)})`;
 }
 
 export default function DistributionHeatmap({ partition }) {
@@ -20,16 +20,21 @@ export default function DistributionHeatmap({ partition }) {
   const grouped = num_classes > GROUP_SIZE;
 
   return (
-    <section aria-labelledby="heatmap-heading">
-      <h2 id="heatmap-heading">Class Distribution Heatmap</h2>
-      <p>
+    <section
+      aria-labelledby="heatmap-heading"
+      className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+    >
+      <h2 id="heatmap-heading" className="text-base font-semibold text-gray-900">
+        Class Distribution Heatmap
+      </h2>
+      <p className="mt-1 text-sm text-gray-500">
         Each cell is one client&rsquo;s sample count for one class &mdash;
         darker means more samples. Hover a cell for the exact count.
         {grouped &&
           ` Classes are grouped in blocks of ${GROUP_SIZE}; scroll horizontally to see them all.`}
       </p>
-      <div style={{ overflowX: "auto", maxWidth: "100%" }}>
-        <table style={{ borderCollapse: "collapse", fontSize: "0.75rem" }}>
+      <div className="mt-4 max-w-full overflow-x-auto">
+        <table className="border-collapse text-xs">
           <thead>
             {grouped && (
               <tr>
@@ -40,12 +45,7 @@ export default function DistributionHeatmap({ partition }) {
                     <th
                       key={`group-${c}`}
                       colSpan={Math.min(GROUP_SIZE, num_classes - c)}
-                      style={{
-                        textAlign: "left",
-                        borderLeft: "2px solid #999",
-                        padding: "0.2rem 0.35rem",
-                        whiteSpace: "nowrap",
-                      }}
+                      className="whitespace-nowrap border-l-2 border-gray-300 px-1.5 py-1 text-left font-medium text-gray-600"
                     >
                       Classes {c}&ndash;{Math.min(c + GROUP_SIZE, num_classes) - 1}
                     </th>
@@ -53,16 +53,16 @@ export default function DistributionHeatmap({ partition }) {
               </tr>
             )}
             <tr>
-              <th scope="col">Client</th>
+              <th scope="col" className="px-2 py-1 text-left font-medium text-gray-600">
+                Client
+              </th>
               {classes.map((c) => (
                 <th
                   key={c}
                   scope="col"
-                  style={{
-                    borderLeft: grouped && c % GROUP_SIZE === 0 ? "2px solid #999" : undefined,
-                    padding: "0.15rem",
-                    fontWeight: "normal",
-                  }}
+                  className={`p-1 font-normal text-gray-500 ${
+                    grouped && c % GROUP_SIZE === 0 ? "border-l-2 border-gray-300" : ""
+                  }`}
                 >
                   {c}
                 </th>
@@ -72,7 +72,10 @@ export default function DistributionHeatmap({ partition }) {
           <tbody>
             {clients.map((client) => (
               <tr key={client.client_id}>
-                <th scope="row" style={{ padding: "0.2rem 0.5rem", whiteSpace: "nowrap", textAlign: "left" }}>
+                <th
+                  scope="row"
+                  className="whitespace-nowrap px-2 py-1 text-left font-medium text-gray-700"
+                >
                   Client {client.client_id}
                 </th>
                 {classes.map((c) => {
@@ -81,14 +84,10 @@ export default function DistributionHeatmap({ partition }) {
                     <td
                       key={c}
                       title={`Client ${client.client_id}, Class ${c}: ${count.toLocaleString()} samples`}
-                      style={{
-                        width: "1.15rem",
-                        height: "1.15rem",
-                        backgroundColor: cellColor(count, maxCount),
-                        borderLeft:
-                          grouped && c % GROUP_SIZE === 0 ? "2px solid #999" : "1px solid #eee",
-                        borderBottom: "1px solid #eee",
-                      }}
+                      className={`h-[1.15rem] w-[1.15rem] border-b ${
+                        grouped && c % GROUP_SIZE === 0 ? "border-l-2 border-l-gray-300" : "border-l border-l-gray-100"
+                      } border-b-gray-100`}
+                      style={{ backgroundColor: cellColor(count, maxCount) }}
                     />
                   );
                 })}

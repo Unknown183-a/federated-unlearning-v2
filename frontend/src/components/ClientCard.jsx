@@ -18,31 +18,43 @@ export default function ClientCard({ client, strategy }) {
   return (
     <article
       aria-label={`Client ${client.client_id}`}
-      style={{ border: "1px solid #ccc", borderRadius: "6px", padding: "0.75rem" }}
+      className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
     >
-      <h3 style={{ marginTop: 0 }}>Client {client.client_id}</h3>
-      <dl style={{ margin: 0 }}>
-        <dt>Samples</dt>
-        <dd>{client.num_samples.toLocaleString()}</dd>
+      <h3 className="text-sm font-semibold text-gray-900">Client {client.client_id}</h3>
+      <dl className="mt-2 space-y-2 text-sm">
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Samples</dt>
+          <dd className="text-gray-900">{client.num_samples.toLocaleString()}</dd>
+        </div>
 
-        <dt>Classes</dt>
-        <dd>{client.num_classes_present}</dd>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Classes</dt>
+          <dd className="text-gray-900">{client.num_classes_present}</dd>
+        </div>
 
-        <dt>Dominant Classes</dt>
-        <dd>
-          {dominant.length ? (
-            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
-              {dominant.map((c) => (
-                <li key={c}>Class {c}</li>
-              ))}
-            </ul>
-          ) : (
-            "None"
-          )}
-        </dd>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Dominant Classes</dt>
+          <dd>
+            {dominant.length ? (
+              <ul className="mt-0.5 list-inside list-disc text-gray-700">
+                {dominant.map((c) => (
+                  <li key={c}>Class {c}</li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-gray-500">None</span>
+            )}
+          </dd>
+        </div>
 
-        <dt>Distribution</dt>
-        <dd>{STRATEGY_LABEL[strategy] || strategy}</dd>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Distribution</dt>
+          <dd>
+            <span className="inline-block rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              {STRATEGY_LABEL[strategy] || strategy}
+            </span>
+          </dd>
+        </div>
       </dl>
     </article>
   );
