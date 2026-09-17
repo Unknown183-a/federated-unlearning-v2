@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.pyc
+__pycache__/
+experiments/*
+!experiments/.gitkeep
+
+# Downloaded dataset files (Phase 05: get_train()/get_test() pull these
+# into ./data on first use -- MNIST/CIFAR are large and re-downloadable,
+# never commit them).
+data/

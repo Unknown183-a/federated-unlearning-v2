@@ -1,0 +1,11 @@
+# Needed once you call Dataset.get_train()/get_test() -- metadata access
+# (load_manifest / get_metadata) has no dependency on these -- and for
+# core.federated (Phase 05): real local training + evaluation.
+torch>=2.2
+torchvision>=0.17
+
+# core.partitioning (Phase 03): seeded IID/Non-IID client splits.
+numpy>=1.24
+
+# Test suite (tests/).
+pytest>=8.0

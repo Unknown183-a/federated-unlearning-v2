@@ -20,7 +20,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
 | 02 | [`phase-02-experiment-configuration/`](./phase-02-experiment-configuration/README.md) | Experiment Configuration | Complete |
 | 03 | [`phase-03-data-partitioning/`](./phase-03-data-partitioning/README.md) | Data Partitioning Engine | Complete |
 | 04 | [`phase-04-client-distribution-view/`](./phase-04-client-distribution-view/README.md) | Client Data Distribution View | Complete |
-| 05 | [`phase-05-federated-learning-engine/`](./phase-05-federated-learning-engine/README.md) | Federated Learning Engine | Not Started |
+| 05 | [`phase-05-federated-learning-engine/`](./phase-05-federated-learning-engine/README.md) | Federated Learning Engine | Complete |
 | 06 | [`phase-06-fl-visualization/`](./phase-06-fl-visualization/README.md) | Federated Learning Visualization & Metrics | Not Started |
 | 07 | [`phase-07-global-model-target-selection/`](./phase-07-global-model-target-selection/README.md) | Global Model & Target Client Selection | Not Started |
 | 08 | [`phase-08-gradient-ascent/`](./phase-08-gradient-ascent/README.md) | Unlearning Engine — Gradient Ascent | Not Started |
@@ -39,7 +39,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
 - [x] Phase 02 — Experiment Configuration
 - [x] Phase 03 — Data Partitioning Engine
 - [x] Phase 04 — Client Data Distribution View
-- [ ] Phase 05 — Federated Learning Engine
+- [x] Phase 05 — Federated Learning Engine
 - [ ] Phase 06 — Federated Learning Visualization & Metrics
 - [ ] Phase 07 — Global Model & Target Client Selection
 - [ ] Phase 08 — Unlearning Engine: Gradient Ascent
