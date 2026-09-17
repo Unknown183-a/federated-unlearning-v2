@@ -47,6 +47,19 @@ export default function FederatedLearning() {
   const [revealedRounds, setRevealedRounds] = useState([]);
   const cancelRef = useRef(false);
 
+  // Elapsed-time readout while the synchronous /api/training request is in
+  // flight -- Phase 05 returns the whole history at once, so there's no real
+  // per-round progress to show yet; a ticking clock is an honest substitute
+  // for a progress bar we can't back with real data.
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    if (status !== "loading") return;
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 200);
+    return () => clearInterval(id);
+  }, [status]);
+
   // Check whether Phase 04's partitioning already ran for this
   // experiment -- the training CLI requires a saved partition.
   useEffect(() => {
@@ -258,10 +271,25 @@ export default function FederatedLearning() {
             {status === "loading" ? "Training…" : "Run Federated Training"}
           </button>
           {status === "loading" && (
-            <p className="mt-2 text-xs font-medium text-rose-600">
-              Live — currently calculating on the server. This can take a while for larger models
-              or many rounds.
-            </p>
+            <div className="mt-3 flex items-center gap-2 text-xs font-medium text-rose-600">
+              <svg
+                className="h-4 w-4 animate-spin text-rose-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                />
+              </svg>
+              <span>
+                Live — currently calculating on the server ({(elapsedMs / 1000).toFixed(0)}s elapsed).
+                This can take a while for larger models or many rounds.
+              </span>
+            </div>
           )}
         </div>
       ) : (
