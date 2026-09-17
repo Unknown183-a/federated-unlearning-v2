@@ -22,7 +22,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
 | 04 | [`phase-04-client-distribution-view/`](./phase-04-client-distribution-view/README.md) | Client Data Distribution View | Complete |
 | 05 | [`phase-05-federated-learning-engine/`](./phase-05-federated-learning-engine/README.md) | Federated Learning Engine | Complete |
 | 06 | [`phase-06-fl-visualization/`](./phase-06-fl-visualization/README.md) | Federated Learning Visualization & Metrics | Complete |
-| 07 | [`phase-07-global-model-target-selection/`](./phase-07-global-model-target-selection/README.md) | Global Model & Target Client Selection | Not Started |
+| 07 | [`phase-07-global-model-target-selection/`](./phase-07-global-model-target-selection/README.md) | Global Model & Target Client Selection | Complete |
 | 08 | [`phase-08-gradient-ascent/`](./phase-08-gradient-ascent/README.md) | Unlearning Engine — Gradient Ascent | Not Started |
 | 09 | [`phase-09-knowledge-distillation/`](./phase-09-knowledge-distillation/README.md) | Knowledge Distillation & Live Unlearning Animation | Not Started |
 | 10 | [`phase-10-evaluation-mia/`](./phase-10-evaluation-mia/README.md) | Evaluation & Membership Inference Attack | Not Started |
@@ -41,7 +41,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
 - [x] Phase 04 — Client Data Distribution View
 - [x] Phase 05 — Federated Learning Engine
 - [x] Phase 06 — Federated Learning Visualization & Metrics
-- [ ] Phase 07 — Global Model & Target Client Selection
+- [x] Phase 07 — Global Model & Target Client Selection
 - [ ] Phase 08 — Unlearning Engine: Gradient Ascent
 - [ ] Phase 09 — Knowledge Distillation & Live Animation
 - [ ] Phase 10 — Evaluation & Membership Inference Attack

@@ -12,15 +12,30 @@ function dominantClasses(classCounts, limit = 3) {
     .map(([classId]) => Number(classId));
 }
 
-export default function ClientCard({ client, strategy }) {
+export default function ClientCard({ client, strategy, selectable, selected, onSelect }) {
   const dominant = dominantClasses(client.class_counts);
 
   return (
     <article
       aria-label={`Client ${client.client_id}`}
-      className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+      aria-pressed={selectable ? selected : undefined}
+      onClick={selectable ? () => onSelect(client.client_id) : undefined}
+      className={`rounded-lg border bg-white p-4 shadow-sm ${
+        selectable ? "cursor-pointer transition-colors" : ""
+      } ${
+        selected
+          ? "border-indigo-500 ring-2 ring-indigo-200"
+          : "border-gray-200"
+      } ${selectable && !selected ? "hover:border-indigo-300" : ""}`}
     >
-      <h3 className="text-sm font-semibold text-gray-900">Client {client.client_id}</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-900">Client {client.client_id}</h3>
+        {selectable && selected && (
+          <span className="shrink-0 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white">
+            Target
+          </span>
+        )}
+      </div>
       <dl className="mt-2 space-y-2 text-sm">
         <div>
           <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Samples</dt>
