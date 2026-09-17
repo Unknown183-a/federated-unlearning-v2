@@ -15,14 +15,26 @@ function statusPath(experimentId) {
 const router = Router();
 
 // POST /api/unlearning -> run core/unlearning (Python) Gradient Ascent
-// stage for this experiment/target client, persist the status to
-// experiments/<id>/unlearning_status.json, and return it (Phase 08:
-// Unlearning Engine -- Gradient Ascent + API). This is
+// followed by Knowledge Distillation for this experiment/target
+// client, persist the status to experiments/<id>/unlearning_status.json,
+// and return it (Phase 08 + Phase 09: Unlearning Engine -- Gradient
+// Ascent + Knowledge Distillation + API). This is
 // start_unlearning(client_id) from the Dashboard Spec (Ch.71.8).
 // Requires that /api/partition and /api/training have already been
 // run for this experiment_id.
 router.post("/", (req, res) => {
-  const { experiment_id, client_id, steps, lr, batch_size } = req.body || {};
+  const {
+    experiment_id,
+    client_id,
+    steps,
+    lr,
+    batch_size,
+    kd_epochs,
+    kd_lr,
+    kd_temperature,
+    kd_alpha,
+    kd_batch_size,
+  } = req.body || {};
 
   if (!experiment_id || client_id === undefined) {
     return res.status(400).json({
@@ -41,6 +53,11 @@ router.post("/", (req, res) => {
   if (steps !== undefined) args.push("--steps", String(steps));
   if (lr !== undefined) args.push("--lr", String(lr));
   if (batch_size !== undefined) args.push("--batch-size", String(batch_size));
+  if (kd_epochs !== undefined) args.push("--kd-epochs", String(kd_epochs));
+  if (kd_lr !== undefined) args.push("--kd-lr", String(kd_lr));
+  if (kd_temperature !== undefined) args.push("--kd-temperature", String(kd_temperature));
+  if (kd_alpha !== undefined) args.push("--kd-alpha", String(kd_alpha));
+  if (kd_batch_size !== undefined) args.push("--kd-batch-size", String(kd_batch_size));
 
   const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
 
