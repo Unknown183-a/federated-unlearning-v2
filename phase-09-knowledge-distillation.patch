@@ -1,0 +1,1630 @@
+From 37ff3948e974540d90375c5a9fd41c11e183f76d Mon Sep 17 00:00:00 2001
+From: Amit Kumar <amit@example.com>
+Date: Thu, 17 Sep 2026 12:00:27 +0000
+Subject: [PATCH] Phase 09: Knowledge Distillation + live two-stage unlearning
+ animation (Page 6)
+
+- core/unlearning/knowledge_distillation.py: run_knowledge_distillation,
+  Hinton-style KD (alpha*CE + (1-alpha)*T^2*KL) distilling the pre-ascent
+  global model back into the post-ascent model, trained only on retained
+  clients; tracks per-retained-client accuracy before/after.
+- core/unlearning/unlearning_engine.py: start_unlearning now chains
+  Gradient Ascent -> Knowledge Distillation, capturing the pre-ascent
+  checkpoint as KD's teacher before it's overwritten, with per-stage
+  status persistence.
+- core/unlearning/storage.py: save_final_checkpoint/load_final_checkpoint
+  for the fully-unlearned model (unlearning_final_model.pt).
+- core/unlearning/cli.py, backend/src/routes/unlearning.js: pass through
+  kd_epochs/kd_lr/kd_temperature/kd_alpha/kd_batch_size.
+- Frontend: Page 6 built out in full -- UnlearningStepper,
+  GradientAscentPanel, KnowledgeDistillationPanel, ClientInfluenceBars,
+  and Unlearning.jsx wired to replay the real backend history
+  progressively (same strategy Phase 06 established for FL), never a
+  fabricated timer.
+- tests/test_unlearning.py: unit tests for run_knowledge_distillation
+  (including a tuned scenario proving retained accuracy measurably
+  recovers), a synthetic (no-download) full start_unlearning pipeline
+  test, and updated the MNIST end-to-end integration test for the new
+  nested gradient_ascent/knowledge_distillation status shape.
+
+Verified: pytest tests/ -m "not slow" (37 passed), npm run build
+(frontend), node --check (backend), python -m py_compile.
+---
+ README.md                                     |   6 +-
+ backend/src/routes/unlearning.js              |  25 +-
+ core/unlearning/cli.py                        |  31 +-
+ core/unlearning/knowledge_distillation.py     | 183 +++++++++-
+ core/unlearning/storage.py                    |  61 +++-
+ core/unlearning/unlearning_engine.py          | 133 ++++++--
+ .../src/components/ClientInfluenceBars.jsx    |  66 ++++
+ .../src/components/GradientAscentPanel.jsx    |  81 +++++
+ .../components/KnowledgeDistillationPanel.jsx |  84 +++++
+ frontend/src/components/UnlearningStepper.jsx |  53 +++
+ frontend/src/pages/Unlearning.jsx             | 319 +++++++++++++++++-
+ phase-09-knowledge-distillation/README.md     |  13 +-
+ tests/test_unlearning.py                      | 244 +++++++++++++-
+ 13 files changed, 1242 insertions(+), 57 deletions(-)
+ create mode 100644 frontend/src/components/ClientInfluenceBars.jsx
+ create mode 100644 frontend/src/components/GradientAscentPanel.jsx
+ create mode 100644 frontend/src/components/KnowledgeDistillationPanel.jsx
+ create mode 100644 frontend/src/components/UnlearningStepper.jsx
+
+diff --git a/README.md b/README.md
+index d52ba10..bd44fb0 100644
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@
+ 
+ This repository tracks the phased implementation of the **Federated Unlearning Lab** interactive dashboard, following the architecture and product specification in `FEDERATED_UNLEARNING_DASHBOARD_SPEC_V2.md`.
+ 
+-Implementation has **not started yet**. Each `phase-XX-*/` folder currently contains only a `README.md` describing that phase's goal, scope, tasks, and acceptance criteria — the same way this project's planning docs are meant to be filled in as work progresses.
++Implementation is in progress. See the Phase Index below for what's done and what's still planning-only.
+ 
+ ## How to use this repo
+ 
+@@ -24,7 +24,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
+ | 06 | [`phase-06-fl-visualization/`](./phase-06-fl-visualization/README.md) | Federated Learning Visualization & Metrics | Complete |
+ | 07 | [`phase-07-global-model-target-selection/`](./phase-07-global-model-target-selection/README.md) | Global Model & Target Client Selection | Complete |
+ | 08 | [`phase-08-gradient-ascent/`](./phase-08-gradient-ascent/README.md) | Unlearning Engine — Gradient Ascent | Complete |
+-| 09 | [`phase-09-knowledge-distillation/`](./phase-09-knowledge-distillation/README.md) | Knowledge Distillation & Live Unlearning Animation | Not Started |
++| 09 | [`phase-09-knowledge-distillation/`](./phase-09-knowledge-distillation/README.md) | Knowledge Distillation & Live Unlearning Animation | Complete |
+ | 10 | [`phase-10-evaluation-mia/`](./phase-10-evaluation-mia/README.md) | Evaluation & Membership Inference Attack | Not Started |
+ | 11 | [`phase-11-comparison-retraining/`](./phase-11-comparison-retraining/README.md) | Before/After, Full Retraining Baseline & Runtime Comparison | Not Started |
+ | 12 | [`phase-12-quick-demo-model-library/`](./phase-12-quick-demo-model-library/README.md) | Quick Unlearning Demo & Model Library | Not Started |
+@@ -43,7 +43,7 @@ Implementation has **not started yet**. Each `phase-XX-*/` folder currently cont
+ - [x] Phase 06 — Federated Learning Visualization & Metrics
+ - [x] Phase 07 — Global Model & Target Client Selection
+ - [x] Phase 08 — Unlearning Engine: Gradient Ascent
+-- [ ] Phase 09 — Knowledge Distillation & Live Animation
++- [x] Phase 09 — Knowledge Distillation & Live Animation
+ - [ ] Phase 10 — Evaluation & Membership Inference Attack
+ - [ ] Phase 11 — Before/After, Retraining Baseline & Runtime Comparison
+ - [ ] Phase 12 — Quick Unlearning Demo & Model Library
+diff --git a/backend/src/routes/unlearning.js b/backend/src/routes/unlearning.js
+index cf76f09..6b3627c 100644
+--- a/backend/src/routes/unlearning.js
++++ b/backend/src/routes/unlearning.js
+@@ -15,14 +15,26 @@ function statusPath(experimentId) {
+ const router = Router();
+ 
+ // POST /api/unlearning -> run core/unlearning (Python) Gradient Ascent
+-// stage for this experiment/target client, persist the status to
+-// experiments/<id>/unlearning_status.json, and return it (Phase 08:
+-// Unlearning Engine -- Gradient Ascent + API). This is
++// followed by Knowledge Distillation for this experiment/target
++// client, persist the status to experiments/<id>/unlearning_status.json,
++// and return it (Phase 08 + Phase 09: Unlearning Engine -- Gradient
++// Ascent + Knowledge Distillation + API). This is
+ // start_unlearning(client_id) from the Dashboard Spec (Ch.71.8).
+ // Requires that /api/partition and /api/training have already been
+ // run for this experiment_id.
+ router.post("/", (req, res) => {
+-  const { experiment_id, client_id, steps, lr, batch_size } = req.body || {};
++  const {
++    experiment_id,
++    client_id,
++    steps,
++    lr,
++    batch_size,
++    kd_epochs,
++    kd_lr,
++    kd_temperature,
++    kd_alpha,
++    kd_batch_size,
++  } = req.body || {};
+ 
+   if (!experiment_id || client_id === undefined) {
+     return res.status(400).json({
+@@ -41,6 +53,11 @@ router.post("/", (req, res) => {
+   if (steps !== undefined) args.push("--steps", String(steps));
+   if (lr !== undefined) args.push("--lr", String(lr));
+   if (batch_size !== undefined) args.push("--batch-size", String(batch_size));
++  if (kd_epochs !== undefined) args.push("--kd-epochs", String(kd_epochs));
++  if (kd_lr !== undefined) args.push("--kd-lr", String(kd_lr));
++  if (kd_temperature !== undefined) args.push("--kd-temperature", String(kd_temperature));
++  if (kd_alpha !== undefined) args.push("--kd-alpha", String(kd_alpha));
++  if (kd_batch_size !== undefined) args.push("--kd-batch-size", String(kd_batch_size));
+ 
+   const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
+ 
+diff --git a/core/unlearning/cli.py b/core/unlearning/cli.py
+index 62012c3..0fadaed 100644
+--- a/core/unlearning/cli.py
++++ b/core/unlearning/cli.py
+@@ -1,13 +1,14 @@
+-"""CLI entrypoint the Express backend shells out to (Phase 08).
++"""CLI entrypoint the Express backend shells out to (Phase 08 + 09).
+ 
+     python -m core.unlearning.cli --experiment-id demo-1 --client-id 3 \\
+-        --steps 30 --lr 0.01
++        --steps 30 --lr 0.01 --kd-epochs 5 --kd-lr 0.01
+ 
+ Requires that experiment ``demo-1`` already has a partition (Phase 03)
+ and a trained global model checkpoint (Phase 05) saved. Runs the
+-Gradient Ascent stage against the given client's local data, persists
+-the resulting status + ascent-stage weights, and prints that same
+-status as JSON on stdout for the API layer.
++Gradient Ascent stage against the given client's local data, followed
++by Knowledge Distillation against every other client, persists the
++resulting status + both stages' weights, and prints that same status
++as JSON on stdout for the API layer.
+ """
+ from __future__ import annotations
+ 
+@@ -19,12 +20,19 @@ from core.unlearning.unlearning_engine import start_unlearning
+ 
+ 
+ def main(argv: list[str] | None = None) -> int:
+-    parser = argparse.ArgumentParser(description="Run the Gradient Ascent unlearning stage.")
++    parser = argparse.ArgumentParser(
++        description="Run the Gradient Ascent + Knowledge Distillation unlearning pipeline."
++    )
+     parser.add_argument("--experiment-id", required=True)
+     parser.add_argument("--client-id", type=int, required=True)
+-    parser.add_argument("--steps", type=int, default=30)
+-    parser.add_argument("--lr", type=float, default=0.01)
+-    parser.add_argument("--batch-size", type=int, default=32)
++    parser.add_argument("--steps", type=int, default=30, help="Gradient Ascent steps")
++    parser.add_argument("--lr", type=float, default=0.01, help="Gradient Ascent learning rate")
++    parser.add_argument("--batch-size", type=int, default=32, help="Gradient Ascent batch size")
++    parser.add_argument("--kd-epochs", type=int, default=5, help="Knowledge Distillation epochs")
++    parser.add_argument("--kd-lr", type=float, default=0.01, help="Knowledge Distillation learning rate")
++    parser.add_argument("--kd-temperature", type=float, default=4.0, help="KD softmax temperature")
++    parser.add_argument("--kd-alpha", type=float, default=0.5, help="KD hard-label loss weight")
++    parser.add_argument("--kd-batch-size", type=int, default=64, help="Knowledge Distillation batch size")
+     args = parser.parse_args(argv)
+ 
+     try:
+@@ -34,6 +42,11 @@ def main(argv: list[str] | None = None) -> int:
+             steps=args.steps,
+             lr=args.lr,
+             batch_size=args.batch_size,
++            kd_epochs=args.kd_epochs,
++            kd_lr=args.kd_lr,
++            kd_temperature=args.kd_temperature,
++            kd_alpha=args.kd_alpha,
++            kd_batch_size=args.kd_batch_size,
+         )
+     except (FileNotFoundError, ValueError) as exc:
+         print(str(exc), file=sys.stderr)
+diff --git a/core/unlearning/knowledge_distillation.py b/core/unlearning/knowledge_distillation.py
+index 3887649..aa1558a 100644
+--- a/core/unlearning/knowledge_distillation.py
++++ b/core/unlearning/knowledge_distillation.py
+@@ -1 +1,182 @@
+-"""Knowledge Distillation unlearning step. Not implemented yet (see Phase 09)."""
++"""Knowledge Distillation unlearning step (Phase 09).
++
++The repair stage: Gradient Ascent (Phase 08) deliberately damages the
++whole model to forget the target client, but it has no way to damage
++*only* the target client's influence -- the rest of the model's
++accuracy on every other ("retained") client suffers too. This stage
++repairs that collateral damage by distilling the *pre-ascent* global
++model (the teacher, which still has all of its original accuracy)
++back into the post-ascent model (the student), using the classic
++Hinton et al. distillation objective:
++
++    loss = alpha * CE(student_logits, hard_labels)
++         + (1 - alpha) * T^2 * KL(softmax(student/T), softmax(teacher/T))
++
++Training on the retained clients' data pulls the student back toward
++the teacher's behavior on data it should still remember, without ever
++showing it the target client's samples again -- so the forgetting from
++Gradient Ascent isn't undone, only the accidental damage to everyone
++else.
++"""
++from __future__ import annotations
++
++import copy
++from statistics import mean
++
++import torch
++import torch.nn.functional as F
++from torch import nn
++from torch.utils.data import DataLoader, Subset
++
++#: Standard temperature for the soft-target KL term (Hinton et al.,
++#: 2015). Higher values soften the teacher's distribution further,
++#: exposing more of the "dark knowledge" in its non-argmax logits.
++DEFAULT_TEMPERATURE = 4.0
++
++#: Weight on the hard-label term vs the soft-target term. 0.5 splits
++#: the objective evenly between "get the right answer" and "match the
++#: teacher's distribution".
++DEFAULT_ALPHA = 0.5
++
++
++def _evaluate_accuracy(model: nn.Module, loader: DataLoader, device: str) -> float:
++    """Return `model`'s accuracy on `loader`, with no grad tracking."""
++    model.eval()
++    correct = 0
++    total = 0
++    with torch.no_grad():
++        for images, labels in loader:
++            images, labels = images.to(device), labels.to(device)
++            outputs = model(images)
++            correct += (outputs.argmax(dim=1) == labels).sum().item()
++            total += labels.size(0)
++    return correct / total if total else 0.0
++
++
++def _client_eval_loaders(dataset, clients: list[dict], batch_size: int) -> dict[int, DataLoader]:
++    return {
++        client["client_id"]: DataLoader(
++            Subset(dataset, client["indices"]), batch_size=max(batch_size, 256), shuffle=False
++        )
++        for client in clients
++    }
++
++
++def run_knowledge_distillation(
++    teacher_state: dict,
++    student_state: dict,
++    model_id: str,
++    channels: int,
++    num_classes: int,
++    dataset,
++    retained_clients: list[dict],
++    epochs: int = 5,
++    lr: float = 0.01,
++    temperature: float = DEFAULT_TEMPERATURE,
++    alpha: float = DEFAULT_ALPHA,
++    batch_size: int = 64,
++    device: str = "cpu",
++) -> dict:
++    """Distill `teacher_state` (pre-ascent model) into `student_state`
++    (post-ascent model), training only on `retained_clients`' data.
++
++    `retained_clients` is a list of partition client dicts (Phase 03's
++    shape: ``{"client_id": int, "indices": [...]}``) -- every client
++    *except* the one Gradient Ascent targeted. Per-client accuracy is
++    measured before and after distillation (Phase 09's acceptance
++    criterion: "Retained-client accuracy recovers measurably after
++    distillation"), alongside a per-epoch KD-loss/accuracy history for
++    the live animation.
++
++    Returns a dict with the resulting student state dict, the
++    before/after per-client accuracy, and the full epoch history.
++    """
++    from core.federated.model import build_model
++
++    if not retained_clients:
++        raise ValueError("retained_clients is empty -- nothing to distill on")
++    if epochs < 1:
++        raise ValueError("epochs must be >= 1")
++
++    teacher = build_model(model_id, channels=channels, num_classes=num_classes).to(device)
++    teacher.load_state_dict(teacher_state)
++    teacher.eval()
++    for param in teacher.parameters():
++        param.requires_grad_(False)
++
++    student = build_model(model_id, channels=channels, num_classes=num_classes).to(device)
++    student.load_state_dict(student_state)
++
++    client_loaders = _client_eval_loaders(dataset, retained_clients, batch_size)
++    all_indices = [i for client in retained_clients for i in client["indices"]]
++    train_loader = DataLoader(Subset(dataset, all_indices), batch_size=batch_size, shuffle=True)
++
++    optimizer = torch.optim.SGD(student.parameters(), lr=lr, momentum=0.9)
++    hard_criterion = nn.CrossEntropyLoss()
++
++    per_client_accuracy_before = {
++        client_id: _evaluate_accuracy(student, loader, device)
++        for client_id, loader in client_loaders.items()
++    }
++    initial_retained_accuracy = mean(per_client_accuracy_before.values())
++
++    epoch_history: list[dict] = []
++    for epoch in range(1, epochs + 1):
++        student.train()
++        total_loss = 0.0
++        total_batches = 0
++        for images, labels in train_loader:
++            images, labels = images.to(device), labels.to(device)
++            optimizer.zero_grad()
++
++            student_logits = student(images)
++            with torch.no_grad():
++                teacher_logits = teacher(images)
++
++            hard_loss = hard_criterion(student_logits, labels)
++            soft_loss = (
++                F.kl_div(
++                    F.log_softmax(student_logits / temperature, dim=1),
++                    F.softmax(teacher_logits / temperature, dim=1),
++                    reduction="batchmean",
++                )
++                * (temperature**2)
++            )
++            loss = alpha * hard_loss + (1 - alpha) * soft_loss
++
++            loss.backward()
++            optimizer.step()
++            total_loss += loss.item()
++            total_batches += 1
++
++        avg_kd_loss = total_loss / total_batches if total_batches else 0.0
++        epoch_accuracy = {
++            client_id: _evaluate_accuracy(student, loader, device)
++            for client_id, loader in client_loaders.items()
++        }
++        epoch_history.append(
++            {
++                "epoch": epoch,
++                "kd_loss": avg_kd_loss,
++                "retained_accuracy": mean(epoch_accuracy.values()),
++            }
++        )
++
++    per_client_accuracy_after = {
++        client_id: _evaluate_accuracy(student, loader, device)
++        for client_id, loader in client_loaders.items()
++    }
++    final_retained_accuracy = mean(per_client_accuracy_after.values())
++
++    return {
++        "final_state_dict": copy.deepcopy(student.state_dict()),
++        "temperature": temperature,
++        "alpha": alpha,
++        "epochs_completed": epochs,
++        "epochs_requested": epochs,
++        "initial_retained_accuracy": initial_retained_accuracy,
++        "final_retained_accuracy": final_retained_accuracy,
++        "per_client_accuracy_before": per_client_accuracy_before,
++        "per_client_accuracy_after": per_client_accuracy_after,
++        "epoch_history": epoch_history,
++    }
+diff --git a/core/unlearning/storage.py b/core/unlearning/storage.py
+index 896ac97..d342f76 100644
+--- a/core/unlearning/storage.py
++++ b/core/unlearning/storage.py
+@@ -1,12 +1,14 @@
+-"""Persistence for unlearning status (Phase 08).
++"""Persistence for unlearning status (Phase 08 + Phase 09).
+ 
+ Mirrors core/federated/storage.py: status is written to
+-``experiments/<experiment_id>/unlearning_status.json``, and the
++``experiments/<experiment_id>/unlearning_status.json``, the
+ Gradient Ascent stage's resulting weights to
+ ``experiments/<experiment_id>/unlearning_ga_model.pt`` -- both
+ alongside that experiment's ``partition.json``/``fl_history.json``/
+-``global_model.pt``. Phase 09 (Knowledge Distillation) loads the
+-latter as its starting point.
++``global_model.pt``. Knowledge Distillation (Phase 09) loads the GA
++checkpoint as its starting point, and its own resulting weights --
++the final unlearned model -- are saved to
++``experiments/<experiment_id>/unlearning_final_model.pt``.
+ """
+ from __future__ import annotations
+ 
+@@ -24,6 +26,10 @@ def _ga_checkpoint_path(experiment_id: str) -> Path:
+     return EXPERIMENTS_DIR / experiment_id / "unlearning_ga_model.pt"
+ 
+ 
++def _final_checkpoint_path(experiment_id: str) -> Path:
++    return EXPERIMENTS_DIR / experiment_id / "unlearning_final_model.pt"
++
++
+ def save_unlearning_status(experiment_id: str, status: dict) -> Path:
+     """Persist the current unlearning status (overwrites any previous run)."""
+     path = _status_path(experiment_id)
+@@ -86,3 +92,50 @@ def load_ga_checkpoint(experiment_id: str) -> dict:
+             "(run start_unlearning first)"
+         )
+     return torch.load(path, weights_only=False)
++
++
++def save_final_checkpoint(
++    experiment_id: str,
++    state_dict: dict,
++    model_id: str,
++    channels: int,
++    num_classes: int,
++) -> Path:
++    """Persist the fully unlearned model -- Gradient Ascent followed by
++    Knowledge Distillation (Phase 09's "Unlearned Model" deliverable).
++
++    Same shape as `save_ga_checkpoint`/`save_model_checkpoint` so a
++    loader (e.g. Phase 10's evaluation) can reconstruct the model the
++    same way regardless of which stage produced it.
++    """
++    import torch
++
++    path = _final_checkpoint_path(experiment_id)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    torch.save(
++        {
++            "state_dict": state_dict,
++            "model_id": model_id,
++            "channels": channels,
++            "num_classes": num_classes,
++        },
++        path,
++    )
++    return path
++
++
++def load_final_checkpoint(experiment_id: str) -> dict:
++    """Load the final (post-distillation) unlearned model checkpoint.
++
++    Raises FileNotFoundError if Knowledge Distillation hasn't
++    completed yet for this experiment.
++    """
++    import torch
++
++    path = _final_checkpoint_path(experiment_id)
++    if not path.exists():
++        raise FileNotFoundError(
++            f"No final unlearned model found for experiment '{experiment_id}' "
++            "(run start_unlearning first)"
++        )
++    return torch.load(path, weights_only=False)
+diff --git a/core/unlearning/unlearning_engine.py b/core/unlearning/unlearning_engine.py
+index b261421..4185763 100644
+--- a/core/unlearning/unlearning_engine.py
++++ b/core/unlearning/unlearning_engine.py
+@@ -1,14 +1,23 @@
+-"""Orchestrates the unlearning pipeline (Phase 08: Gradient Ascent only).
++"""Orchestrates the unlearning pipeline (Phase 08 + Phase 09).
+ 
+ Exposes the two conceptual ComputeBackend operations from the
+-Dashboard Spec (Ch.71.8) that this phase is responsible for:
++Dashboard Spec (Ch.71.8):
+ 
+     start_unlearning(client_id)
+     get_unlearning_status()
+ 
+-Knowledge Distillation (Phase 09) will extend `start_unlearning` to
+-run a second stage after this one; for now the pipeline stops after
+-Gradient Ascent, matching Phase 08's "stage 1 only" scope.
++`start_unlearning` runs both stages of the pipeline in sequence:
++
++    1. Gradient Ascent (Phase 08)   -- forget the target client
++    2. Knowledge Distillation (Phase 09) -- repair collateral damage
++       on every other ("retained") client, using the pre-ascent
++       global model as the teacher
++
++and persists the resulting status (and both stages' weights) so a
++later `get_unlearning_status` call can pick the full result back up
++without re-running anything. Evaluation/MIA (Phase 10) is out of
++scope here -- this pipeline stops once the final unlearned model is
++saved.
+ """
+ from __future__ import annotations
+ 
+@@ -18,8 +27,10 @@ from core.datasets.base import get_dataset
+ from core.federated.storage import load_fl_history, load_model_checkpoint
+ from core.partitioning.storage import load_partition
+ from core.unlearning.gradient_ascent import run_gradient_ascent
++from core.unlearning.knowledge_distillation import run_knowledge_distillation
+ from core.unlearning.storage import (
+     load_unlearning_status,
++    save_final_checkpoint,
+     save_ga_checkpoint,
+     save_unlearning_status,
+ )
+@@ -31,15 +42,18 @@ def start_unlearning(
+     steps: int = 30,
+     lr: float = 0.01,
+     batch_size: int = 32,
++    kd_epochs: int = 5,
++    kd_lr: float = 0.01,
++    kd_temperature: float = 4.0,
++    kd_alpha: float = 0.5,
++    kd_batch_size: int = 64,
+     device: str = "cpu",
+ ) -> dict:
+-    """Run the Gradient Ascent stage against `client_id`'s local data.
++    """Run the full Gradient Ascent -> Knowledge Distillation pipeline
++    against `client_id`'s local data.
+ 
+     Requires that this experiment has already been through Phase 03
+     (partitioned) and Phase 05 (trained, with a saved checkpoint).
+-    Persists the resulting status (and the ascent-stage weights) so a
+-    later `get_unlearning_status` call -- or Phase 09 -- can pick them
+-    back up without re-running anything.
+     """
+     started_at = time.time()
+ 
+@@ -54,20 +68,30 @@ def start_unlearning(
+             f"(num_clients={partition['num_clients']})"
+         )
+     target_indices = clients[client_id]["indices"]
++    retained_clients = [c for c in clients if c["client_id"] != client_id]
+ 
+     dataset = get_dataset(partition["dataset"]).get_train()
+ 
++    # The pre-ascent global model is Knowledge Distillation's teacher
++    # (Phase 09's goal): capture it now, before Gradient Ascent
++    # overwrites the working weights below.
++    pretrained_state = checkpoint["state_dict"]
++
+     status = {
+         "experiment_id": experiment_id,
+         "target_client_id": client_id,
++        "model": history["model"],
++        "dataset": history["dataset"],
+         "stage": "gradient_ascent",
+         "status": "running",
+     }
+     save_unlearning_status(experiment_id, status)
+ 
++    # -- Stage 1: Gradient Ascent (Phase 08) --------------------------
++    ga_started_at = time.time()
+     try:
+-        result = run_gradient_ascent(
+-            global_state=checkpoint["state_dict"],
++        ga_result = run_gradient_ascent(
++            global_state=pretrained_state,
+             model_id=checkpoint["model_id"],
+             channels=checkpoint["channels"],
+             num_classes=checkpoint["num_classes"],
+@@ -90,27 +114,86 @@ def start_unlearning(
+ 
+     save_ga_checkpoint(
+         experiment_id,
+-        state_dict=result["final_state_dict"],
++        state_dict=ga_result["final_state_dict"],
+         model_id=checkpoint["model_id"],
+         channels=checkpoint["channels"],
+         num_classes=checkpoint["num_classes"],
+     )
+ 
++    gradient_ascent_summary = {
++        "status": "complete",
++        "steps_completed": ga_result["steps_completed"],
++        "steps_requested": ga_result["steps_requested"],
++        "stopped_early": ga_result["stopped_early"],
++        "initial_loss": ga_result["initial_loss"],
++        "initial_accuracy": ga_result["initial_accuracy"],
++        "final_loss": ga_result["final_loss"],
++        "final_accuracy": ga_result["final_accuracy"],
++        "step_history": ga_result["step_history"],
++        "duration_seconds": time.time() - ga_started_at,
++    }
++
+     status = {
+-        "experiment_id": experiment_id,
+-        "target_client_id": client_id,
+-        "stage": "gradient_ascent",
++        **status,
++        "stage": "knowledge_distillation",
++        "gradient_ascent": gradient_ascent_summary,
++    }
++    save_unlearning_status(experiment_id, status)
++
++    # -- Stage 2: Knowledge Distillation (Phase 09) -------------------
++    kd_started_at = time.time()
++    try:
++        kd_result = run_knowledge_distillation(
++            teacher_state=pretrained_state,
++            student_state=ga_result["final_state_dict"],
++            model_id=checkpoint["model_id"],
++            channels=checkpoint["channels"],
++            num_classes=checkpoint["num_classes"],
++            dataset=dataset,
++            retained_clients=retained_clients,
++            epochs=kd_epochs,
++            lr=kd_lr,
++            temperature=kd_temperature,
++            alpha=kd_alpha,
++            batch_size=kd_batch_size,
++            device=device,
++        )
++    except Exception as exc:
++        status = {
++            **status,
++            "status": "failed",
++            "error": str(exc),
++            "duration_seconds": time.time() - started_at,
++        }
++        save_unlearning_status(experiment_id, status)
++        raise
++
++    save_final_checkpoint(
++        experiment_id,
++        state_dict=kd_result["final_state_dict"],
++        model_id=checkpoint["model_id"],
++        channels=checkpoint["channels"],
++        num_classes=checkpoint["num_classes"],
++    )
++
++    knowledge_distillation_summary = {
+         "status": "complete",
+-        "model": history["model"],
+-        "dataset": history["dataset"],
+-        "steps_completed": result["steps_completed"],
+-        "steps_requested": result["steps_requested"],
+-        "stopped_early": result["stopped_early"],
+-        "initial_loss": result["initial_loss"],
+-        "initial_accuracy": result["initial_accuracy"],
+-        "final_loss": result["final_loss"],
+-        "final_accuracy": result["final_accuracy"],
+-        "step_history": result["step_history"],
++        "epochs_completed": kd_result["epochs_completed"],
++        "epochs_requested": kd_result["epochs_requested"],
++        "temperature": kd_result["temperature"],
++        "alpha": kd_result["alpha"],
++        "initial_retained_accuracy": kd_result["initial_retained_accuracy"],
++        "final_retained_accuracy": kd_result["final_retained_accuracy"],
++        "per_client_accuracy_before": kd_result["per_client_accuracy_before"],
++        "per_client_accuracy_after": kd_result["per_client_accuracy_after"],
++        "epoch_history": kd_result["epoch_history"],
++        "duration_seconds": time.time() - kd_started_at,
++    }
++
++    status = {
++        **status,
++        "status": "complete",
++        "knowledge_distillation": knowledge_distillation_summary,
+         "duration_seconds": time.time() - started_at,
+     }
+     save_unlearning_status(experiment_id, status)
+diff --git a/frontend/src/components/ClientInfluenceBars.jsx b/frontend/src/components/ClientInfluenceBars.jsx
+new file mode 100644
+index 0000000..fef15a5
+--- /dev/null
++++ b/frontend/src/components/ClientInfluenceBars.jsx
+@@ -0,0 +1,66 @@
++// "Client Influence" before/after bars (Dashboard Spec Ch.19). Values
++// are always real measured accuracy -- retained-client accuracy from
++// Phase 09's Knowledge Distillation (before/after distillation), and
++// the target client's accuracy from Phase 08's Gradient Ascent
++// (before ascent / after ascent) shown alongside for the "one client's
++// influence drops while the others are preserved" contrast the spec
++// asks for. No influence score is invented -- these are the actual
++// implemented accuracy metrics used as the influence proxy.
++function Row({ label, value, highlight }) {
++  const pct = Math.max(0, Math.min(1, value)) * 100;
++  return (
++    <div className="flex items-center gap-3">
++      <span className={`w-24 shrink-0 text-xs font-medium ${highlight ? "text-rose-700" : "text-gray-600"}`}>
++        {label}
++      </span>
++      <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-100">
++        <div
++          className={`h-full rounded-full ${highlight ? "bg-rose-500" : "bg-indigo-500"}`}
++          style={{ width: `${pct}%` }}
++        />
++      </div>
++      <span className="w-14 shrink-0 text-right text-xs font-semibold text-gray-900">
++        {(value * 100).toFixed(1)}%
++      </span>
++    </div>
++  );
++}
++
++export default function ClientInfluenceBars({ targetClientId, targetBefore, targetAfter, retainedBefore, retainedAfter }) {
++  const retainedClientIds = Object.keys(retainedBefore)
++    .map(Number)
++    .sort((a, b) => a - b);
++
++  return (
++    <section aria-labelledby="client-influence-heading" className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
++      <h2 id="client-influence-heading" className="text-base font-semibold text-gray-900">
++        Client Influence — Before vs After
++      </h2>
++      <p className="mt-1 text-sm text-gray-500">
++        The target client&rsquo;s accuracy should drop; every retained client&rsquo;s accuracy
++        should recover after distillation.
++      </p>
++
++      <div className="mt-5 grid gap-6 sm:grid-cols-2">
++        <div>
++          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Before</h3>
++          <div className="mt-3 space-y-2.5">
++            <Row label={`Client ${targetClientId}`} value={targetBefore} highlight />
++            {retainedClientIds.map((id) => (
++              <Row key={id} label={`Client ${id}`} value={retainedBefore[id]} />
++            ))}
++          </div>
++        </div>
++        <div>
++          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">After</h3>
++          <div className="mt-3 space-y-2.5">
++            <Row label={`Client ${targetClientId}`} value={targetAfter} highlight />
++            {retainedClientIds.map((id) => (
++              <Row key={id} label={`Client ${id}`} value={retainedAfter[id]} />
++            ))}
++          </div>
++        </div>
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/components/GradientAscentPanel.jsx b/frontend/src/components/GradientAscentPanel.jsx
+new file mode 100644
+index 0000000..b95b1ad
+--- /dev/null
++++ b/frontend/src/components/GradientAscentPanel.jsx
+@@ -0,0 +1,81 @@
++import MetricLineChart from "./MetricLineChart.jsx";
++
++// Gradient Ascent's own live panel (Dashboard Spec Ch.15-16). Every
++// number here comes from a real, already-measured step in the
++// backend's step_history -- `currentStep` only ever points at a step
++// that has actually happened (Phase 08's real values, replayed
++// progressively rather than streamed -- see Unlearning.jsx).
++function Bar({ label, value, colorClass }) {
++  const pct = Math.max(0, Math.min(1, value)) * 100;
++  return (
++    <div>
++      <div className="flex items-baseline justify-between text-xs">
++        <span className="font-medium uppercase tracking-wide text-gray-500">{label}</span>
++        <span className="font-semibold text-gray-900">{(value * 100).toFixed(1)}%</span>
++      </div>
++      <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-gray-200">
++        <div
++          className={`h-full rounded-full transition-[width] duration-150 ease-linear ${colorClass}`}
++          style={{ width: `${pct}%` }}
++        />
++      </div>
++    </div>
++  );
++}
++
++export default function GradientAscentPanel({ targetClientId, currentStep, totalSteps, revealedHistory }) {
++  const latest = revealedHistory[revealedHistory.length - 1];
++  const lossData = revealedHistory.map((s) => ({ round: s.step, value: s.loss }));
++
++  return (
++    <section aria-labelledby="ga-panel-heading" className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
++      <div className="flex items-start justify-between gap-4">
++        <div>
++          <h2 id="ga-panel-heading" className="text-base font-semibold text-gray-900">
++            Gradient Ascent
++          </h2>
++          <p className="mt-1 text-sm text-gray-500">
++            Target Client: <strong className="font-semibold text-gray-900">Client {targetClientId}</strong>
++          </p>
++        </div>
++        <span className="shrink-0 rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">
++          Removing client influence…
++        </span>
++      </div>
++
++      <p className="mt-3 text-sm text-gray-600">
++        Ascending (not descending) the loss on the target client&rsquo;s own data, so the model
++        gets deliberately worse at it -- undoing what it picked up from that client during FedAvg.
++      </p>
++
++      <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-200">
++        <div
++          className="h-full rounded-full bg-rose-600 transition-[width] duration-150 ease-linear"
++          style={{ width: `${totalSteps ? Math.round((currentStep / totalSteps) * 100) : 0}%` }}
++        />
++      </div>
++      <p className="mt-1 text-xs text-gray-500">
++        Iteration {currentStep} / {totalSteps}
++      </p>
++
++      {latest && (
++        <div className="mt-4 grid gap-4 sm:grid-cols-2">
++          <Bar label="Target Client Loss" value={Math.min(latest.loss / 4, 1)} colorClass="bg-rose-600" />
++          <Bar label="Target Client Accuracy" value={latest.accuracy} colorClass="bg-gray-500" />
++        </div>
++      )}
++
++      <div className="mt-6">
++        <MetricLineChart
++          title="Target-Client Loss vs Iteration"
++          data={lossData}
++          totalRounds={totalSteps}
++          color="#e11d48"
++          formatY={(v) => v.toFixed(2)}
++          yLabel="loss"
++          emptyHint="Waiting for the first ascent step…"
++        />
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/components/KnowledgeDistillationPanel.jsx b/frontend/src/components/KnowledgeDistillationPanel.jsx
+new file mode 100644
+index 0000000..c46ca95
+--- /dev/null
++++ b/frontend/src/components/KnowledgeDistillationPanel.jsx
+@@ -0,0 +1,84 @@
++import MetricLineChart from "./MetricLineChart.jsx";
++
++// Knowledge Distillation's live panel (Dashboard Spec Ch.17-18):
++// teacher/student diagram, temperature, KD loss, and progress -- all
++// from the real epoch_history the backend measured, revealed one
++// epoch at a time (see Unlearning.jsx).
++export default function KnowledgeDistillationPanel({
++  temperature,
++  alpha,
++  currentEpoch,
++  totalEpochs,
++  revealedHistory,
++}) {
++  const latest = revealedHistory[revealedHistory.length - 1];
++  const lossData = revealedHistory.map((e) => ({ round: e.epoch, value: e.kd_loss }));
++
++  return (
++    <section aria-labelledby="kd-panel-heading" className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
++      <h2 id="kd-panel-heading" className="text-base font-semibold text-gray-900">
++        Knowledge Distillation
++      </h2>
++      <p className="mt-1 text-sm text-gray-500">
++        Repairing collateral damage: the pre-ascent model teaches the post-ascent model back
++        toward its original behavior on every client except the one being forgotten.
++      </p>
++
++      <div className="mt-5 flex flex-col items-center gap-1.5 text-center text-sm">
++        <div className="rounded-md border-2 border-indigo-600 bg-indigo-50 px-4 py-2 font-semibold text-indigo-800">
++          Original Model — Teacher
++        </div>
++        <span className="text-xs text-gray-400">↓ soft predictions ↓</span>
++        <div className="rounded-md border-2 border-gray-400 bg-gray-50 px-6 py-3 font-semibold text-gray-700">
++          KD Loss · Temperature {temperature}
++        </div>
++        <span className="text-xs text-gray-400">↓ update ↓</span>
++        <div className="rounded-md border-2 border-teal-600 bg-teal-50 px-4 py-2 font-semibold text-teal-800">
++          Unlearned Model — Student
++        </div>
++      </div>
++
++      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
++        <div>
++          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Temperature</dt>
++          <dd className="mt-0.5 text-sm font-semibold text-gray-900">{temperature}</dd>
++        </div>
++        <div>
++          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Hard-Label Weight (α)</dt>
++          <dd className="mt-0.5 text-sm font-semibold text-gray-900">{alpha}</dd>
++        </div>
++        <div>
++          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Epoch</dt>
++          <dd className="mt-0.5 text-sm font-semibold text-gray-900">
++            {currentEpoch} / {totalEpochs}
++          </dd>
++        </div>
++        <div>
++          <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Current KD Loss</dt>
++          <dd className="mt-0.5 text-sm font-semibold text-gray-900">
++            {latest ? latest.kd_loss.toFixed(3) : "—"}
++          </dd>
++        </div>
++      </dl>
++
++      <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-200">
++        <div
++          className="h-full rounded-full bg-teal-600 transition-[width] duration-150 ease-linear"
++          style={{ width: `${totalEpochs ? Math.round((currentEpoch / totalEpochs) * 100) : 0}%` }}
++        />
++      </div>
++
++      <div className="mt-6">
++        <MetricLineChart
++          title="KD Loss vs Epoch"
++          data={lossData}
++          totalRounds={totalEpochs}
++          color="#0d9488"
++          formatY={(v) => v.toFixed(2)}
++          yLabel="kd loss"
++          emptyHint="Waiting for the first distillation epoch…"
++        />
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/components/UnlearningStepper.jsx b/frontend/src/components/UnlearningStepper.jsx
+new file mode 100644
+index 0000000..38fb4f1
+--- /dev/null
++++ b/frontend/src/components/UnlearningStepper.jsx
+@@ -0,0 +1,53 @@
++// Unlearning status timeline (Dashboard Spec Ch.14). `stageStatus` maps
++// each stage key to "done" | "running" | "waiting" so the caller drives
++// this purely off real backend/animation state -- no stage is ever
++// marked done or running except because the data says so.
++const STAGES = [
++  { key: "model_loaded", label: "Model Loaded" },
++  { key: "target_client", label: "Target Client" },
++  { key: "gradient_ascent", label: "Gradient Ascent" },
++  { key: "knowledge_distillation", label: "Knowledge Distill." },
++  { key: "final_results", label: "Final Results" },
++];
++
++const ICON = {
++  done: "✓",
++  running: "●",
++  waiting: "○",
++};
++
++const COLOR = {
++  done: "border-green-300 bg-green-50 text-green-700",
++  running: "border-indigo-400 bg-indigo-50 text-indigo-700 animate-pulse",
++  waiting: "border-gray-200 bg-gray-50 text-gray-400",
++};
++
++export default function UnlearningStepper({ stageStatus }) {
++  return (
++    <section aria-labelledby="unlearning-stepper-heading" className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
++      <h2 id="unlearning-stepper-heading" className="text-base font-semibold text-gray-900">
++        Unlearning Pipeline
++      </h2>
++      <ol className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-0">
++        {STAGES.map((stage, i) => {
++          const state = stageStatus[stage.key] || "waiting";
++          return (
++            <li key={stage.key} className="flex items-center sm:flex-1">
++              <div
++                className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${COLOR[state]}`}
++              >
++                <span aria-hidden="true">{ICON[state]}</span>
++                {stage.label}
++              </div>
++              {i < STAGES.length - 1 && (
++                <span className="mx-2 hidden text-gray-300 sm:inline" aria-hidden="true">
++                  ──▶
++                </span>
++              )}
++            </li>
++          );
++        })}
++      </ol>
++    </section>
++  );
++}
+diff --git a/frontend/src/pages/Unlearning.jsx b/frontend/src/pages/Unlearning.jsx
+index 4e28835..ec95a5d 100644
+--- a/frontend/src/pages/Unlearning.jsx
++++ b/frontend/src/pages/Unlearning.jsx
+@@ -1,5 +1,320 @@
+-import PageStub from "./PageStub.jsx";
++import { useEffect, useRef, useState } from "react";
++import { Link } from "react-router-dom";
++import { useExperimentConfig } from "../state/ExperimentContext.jsx";
++import UnlearningStepper from "../components/UnlearningStepper.jsx";
++import GradientAscentPanel from "../components/GradientAscentPanel.jsx";
++import KnowledgeDistillationPanel from "../components/KnowledgeDistillationPanel.jsx";
++import ClientInfluenceBars from "../components/ClientInfluenceBars.jsx";
++
++// Page 6 -- Unlearning (Dashboard Spec Ch.13-20, Ch.32 Page 6).
++//
++// Mirrors Phase 06's replay strategy (see FederatedLearning.jsx): the
++// backend runs both stages -- Gradient Ascent (Phase 08) then
++// Knowledge Distillation (Phase 09) -- synchronously and returns the
++// complete, real per-step/per-epoch history at once (Ch.37: "prefer
++// live execution" for unlearning). "Live" animation here means
++// revealing that real history progressively, never fabricating values
++// with a timer (Phase 09 acceptance criterion).
++
++const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+ 
+ export default function Unlearning() {
+-  return <PageStub title="Unlearning" />;
++  const { config } = useExperimentConfig();
++
++  const [gateStatus, setGateStatus] = useState("loading"); // loading | ready | missing
++  const [runStatus, setRunStatus] = useState("idle"); // idle | loading | error | ready
++  const [error, setError] = useState(null);
++  const [result, setResult] = useState(null);
++  const [resultKind, setResultKind] = useState(null); // "measured" | "stored"
++
++  const [elapsedMs, setElapsedMs] = useState(0);
++  useEffect(() => {
++    if (runStatus !== "loading") return;
++    const startedAt = Date.now();
++    setElapsedMs(0);
++    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 200);
++    return () => clearInterval(id);
++  }, [runStatus]);
++
++  // A trained checkpoint is required before unlearning can run at all.
++  useEffect(() => {
++    if (!config.experiment_id) return;
++    let ignore = false;
++    fetch(`/api/training/${encodeURIComponent(config.experiment_id)}`)
++      .then((res) => {
++        if (!ignore) setGateStatus(res.ok ? "ready" : "missing");
++      })
++      .catch(() => {
++        if (!ignore) setGateStatus("missing");
++      });
++    return () => {
++      ignore = true;
++    };
++  }, [config.experiment_id]);
++
++  // If this experiment already has a persisted unlearning result,
++  // load and replay it (a "stored" replay, same as Phase 06's loaded
++  // runs -- never presented as if it were live).
++  useEffect(() => {
++    if (!config.experiment_id || gateStatus !== "ready") return;
++    let ignore = false;
++    fetch(`/api/unlearning/${encodeURIComponent(config.experiment_id)}`)
++      .then(async (res) => {
++        if (ignore || !res.ok) return;
++        const data = await res.json();
++        if (data.status && data.status.status === "complete") {
++          setResultKind("stored");
++          setResult(data.status);
++          setRunStatus("ready");
++        }
++      })
++      .catch(() => {});
++    return () => {
++      ignore = true;
++    };
++  }, [config.experiment_id, gateStatus]);
++
++  async function runUnlearning() {
++    setRunStatus("loading");
++    setError(null);
++    setResult(null);
++    try {
++      const res = await fetch("/api/unlearning", {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({
++          experiment_id: config.experiment_id,
++          client_id: config.target_client_id,
++        }),
++      });
++      if (!res.ok) {
++        const body = await res.json().catch(() => ({}));
++        throw new Error(body.error || `Request failed: ${res.status}`);
++      }
++      const data = await res.json();
++      setResultKind("measured");
++      setResult(data.status);
++      setRunStatus("ready");
++    } catch (err) {
++      setError(err.message);
++      setRunStatus("error");
++    }
++  }
++
++  // -- Two-stage replay animation ------------------------------------
++  const [phase, setPhase] = useState("idle"); // idle | ascent | distillation | done
++  const [gaRevealed, setGaRevealed] = useState(0);
++  const [kdRevealed, setKdRevealed] = useState(0);
++  const cancelRef = useRef(false);
++
++  useEffect(() => {
++    if (!result) return;
++    cancelRef.current = false;
++    setGaRevealed(0);
++    setKdRevealed(0);
++    setPhase("ascent");
++
++    const ga = result.gradient_ascent;
++    const kd = result.knowledge_distillation;
++
++    async function play() {
++      for (let i = 1; i <= ga.step_history.length; i++) {
++        if (cancelRef.current) return;
++        setGaRevealed(i);
++        await sleep(45);
++      }
++      if (cancelRef.current) return;
++      await sleep(400);
++      setPhase("distillation");
++      for (let i = 1; i <= kd.epoch_history.length; i++) {
++        if (cancelRef.current) return;
++        setKdRevealed(i);
++        await sleep(220);
++      }
++      if (cancelRef.current) return;
++      setPhase("done");
++    }
++
++    play();
++    return () => {
++      cancelRef.current = true;
++    };
++  }, [result]);
++
++  function skipAnimation() {
++    if (!result) return;
++    cancelRef.current = true;
++    setGaRevealed(result.gradient_ascent.step_history.length);
++    setKdRevealed(result.knowledge_distillation.epoch_history.length);
++    setPhase("done");
++  }
++
++  const stageStatus = {
++    model_loaded: result ? "done" : "waiting",
++    target_client: result ? "done" : config.target_client_id !== null ? "done" : "waiting",
++    gradient_ascent: !result ? "waiting" : phase === "ascent" ? "running" : "done",
++    knowledge_distillation: !result ? "waiting" : phase === "distillation" ? "running" : phase === "done" ? "done" : "waiting",
++    final_results: phase === "done" ? "done" : "waiting",
++  };
++
++  const hasTarget = config.target_client_id !== null && config.target_client_id !== undefined;
++  const isAnimating = Boolean(result) && phase !== "done";
++
++  return (
++    <section className="space-y-8">
++      <div className="flex items-start justify-between gap-4">
++        <div>
++          <h1 className="text-2xl font-bold text-gray-900">Unlearning</h1>
++          <p className="mt-1 text-sm text-gray-500">
++            Gradient Ascent forgets the target client; Knowledge Distillation repairs everyone
++            else&rsquo;s accuracy.
++          </p>
++        </div>
++        {resultKind && (
++          <span
++            className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
++              resultKind === "measured" ? "bg-indigo-100 text-indigo-800" : "bg-amber-100 text-amber-800"
++            }`}
++          >
++            {resultKind === "measured" ? "Measured" : "Stored Experiment"}
++          </span>
++        )}
++      </div>
++
++      {gateStatus === "missing" && (
++        <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
++          No trained model found for this experiment yet — run{" "}
++          <Link to="/training" className="font-medium underline">
++            Federated Learning
++          </Link>{" "}
++          first.
++        </p>
++      )}
++
++      {gateStatus === "ready" && !hasTarget && (
++        <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
++          No target client selected yet — choose one on{" "}
++          <Link to="/client-selection" className="font-medium underline">
++            Client Selection
++          </Link>{" "}
++          first.
++        </p>
++      )}
++
++      {gateStatus === "ready" && hasTarget && (
++        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
++          <p className="text-sm text-gray-700">
++            Run Gradient Ascent + Knowledge Distillation for experiment{" "}
++            <strong className="font-semibold">{config.experiment_id}</strong>, forgetting{" "}
++            <strong className="font-semibold">Client {config.target_client_id}</strong>.
++          </p>
++          <button
++            onClick={runUnlearning}
++            disabled={runStatus === "loading"}
++            className="mt-4 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
++          >
++            {runStatus === "loading" ? "Unlearning…" : "Run Unlearning"}
++          </button>
++          {runStatus === "loading" && (
++            <div className="mt-3 flex items-center gap-2 text-xs font-medium text-rose-600">
++              <svg className="h-4 w-4 animate-spin text-rose-500" viewBox="0 0 24 24" fill="none" aria-hidden="true">
++                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
++                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
++              </svg>
++              <span>
++                Live — running Gradient Ascent + Knowledge Distillation on the server (
++                {(elapsedMs / 1000).toFixed(0)}s elapsed).
++              </span>
++            </div>
++          )}
++        </div>
++      )}
++
++      {error && (
++        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
++          {error}
++        </p>
++      )}
++
++      {result && (
++        <>
++          <UnlearningStepper stageStatus={stageStatus} />
++
++          {isAnimating && (
++            <div className="flex justify-end">
++              <button
++                onClick={skipAnimation}
++                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
++              >
++                Skip to final result
++              </button>
++            </div>
++          )}
++
++          {(phase === "ascent" || phase === "distillation" || phase === "done") && (
++            <GradientAscentPanel
++              targetClientId={result.target_client_id}
++              currentStep={gaRevealed}
++              totalSteps={result.gradient_ascent.steps_requested}
++              revealedHistory={result.gradient_ascent.step_history.slice(0, gaRevealed)}
++            />
++          )}
++
++          {(phase === "distillation" || phase === "done") && (
++            <KnowledgeDistillationPanel
++              temperature={result.knowledge_distillation.temperature}
++              alpha={result.knowledge_distillation.alpha}
++              currentEpoch={kdRevealed}
++              totalEpochs={result.knowledge_distillation.epochs_requested}
++              revealedHistory={result.knowledge_distillation.epoch_history.slice(0, kdRevealed)}
++            />
++          )}
++
++          {phase === "done" && (
++            <>
++              <ClientInfluenceBars
++                targetClientId={result.target_client_id}
++                targetBefore={result.gradient_ascent.initial_accuracy}
++                targetAfter={result.gradient_ascent.final_accuracy}
++                retainedBefore={result.knowledge_distillation.per_client_accuracy_before}
++                retainedAfter={result.knowledge_distillation.per_client_accuracy_after}
++              />
++
++              <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
++                <h2 className="text-base font-semibold text-gray-900">Unlearning Complete</h2>
++                <p className="mt-1 text-sm text-gray-500">
++                  Original Model → Gradient Ascent → Knowledge Distillation → Unlearned Model
++                </p>
++                <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
++                  <div>
++                    <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Model / Dataset</dt>
++                    <dd className="mt-0.5 text-sm font-semibold text-gray-900">
++                      {result.model} · {result.dataset}
++                    </dd>
++                  </div>
++                  <div>
++                    <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Retained Accuracy</dt>
++                    <dd className="mt-0.5 text-sm font-semibold text-gray-900">
++                      {(result.knowledge_distillation.initial_retained_accuracy * 100).toFixed(1)}% →{" "}
++                      {(result.knowledge_distillation.final_retained_accuracy * 100).toFixed(1)}%
++                    </dd>
++                  </div>
++                  <div>
++                    <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Total Unlearning Time</dt>
++                    <dd className="mt-0.5 text-sm font-semibold text-gray-900">
++                      {result.duration_seconds.toFixed(1)}s
++                    </dd>
++                  </div>
++                  <div>
++                    <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Checkpoint</dt>
++                    <dd className="mt-0.5 text-sm font-semibold text-green-700">✓ Saved</dd>
++                  </div>
++                </dl>
++              </div>
++            </>
++          )}
++        </>
++      )}
++    </section>
++  );
+ }
+diff --git a/phase-09-knowledge-distillation/README.md b/phase-09-knowledge-distillation/README.md
+index 5b7b6e3..a026896 100644
+--- a/phase-09-knowledge-distillation/README.md
++++ b/phase-09-knowledge-distillation/README.md
+@@ -1,7 +1,7 @@
+ # Phase 09 — Knowledge Distillation & Live Unlearning Animation
+ 
+-> Status: **Not Started**
+-> Implementation: not started at this time — this folder currently holds only the plan.
++> Status: **Complete**
++> Implementation: `core/unlearning/knowledge_distillation.py` (`run_knowledge_distillation` — Hinton-style distillation: `alpha * CE(hard labels) + (1 - alpha) * T^2 * KL(student/T, teacher/T)`, teacher = pre-ascent global model, student = post-ascent model, trained on every client except the forgotten one; tracks per-retained-client accuracy before/after), `core/unlearning/unlearning_engine.py` (`start_unlearning` extended to chain Gradient Ascent → Knowledge Distillation, capturing the pre-ascent checkpoint as the KD teacher before Phase 08 overwrites the working weights), `core/unlearning/storage.py` (adds `save_final_checkpoint`/`load_final_checkpoint` for the fully-unlearned model, `unlearning_final_model.pt`), `core/unlearning/cli.py` + `backend/src/routes/unlearning.js` (pass through `kd_epochs`/`kd_lr`/`kd_temperature`/`kd_alpha`/`kd_batch_size`), and Page 6 in full: `frontend/src/pages/Unlearning.jsx` plus `UnlearningStepper.jsx`, `GradientAscentPanel.jsx`, `KnowledgeDistillationPanel.jsx`, `ClientInfluenceBars.jsx`.
+ 
+ ## Goal
+ 
+@@ -20,10 +20,10 @@ Repair collateral damage from Gradient Ascent using the pre-unlearning model as
+ 
+ ## Tasks
+ 
+-- [ ] Implement Knowledge Distillation using the pre-unlearning model as teacher
+-- [ ] Track per-retained-client accuracy before and after distillation
+-- [ ] Build the live two-stage (ascent → distillation) animation component
+-- [ ] Wire the animation to real backend progress signals — never a fake timer
++- [x] Implement Knowledge Distillation using the pre-unlearning model as teacher
++- [x] Track per-retained-client accuracy before and after distillation
++- [x] Build the live two-stage (ascent → distillation) animation component
++- [x] Wire the animation to real backend progress signals — never a fake timer
+ 
+ ## Deliverables
+ 
+@@ -43,6 +43,7 @@ Phase 08 (Gradient Ascent)
+ | Date | Update |
+ |------|--------|
+ | — | Phase not started |
++| — | Knowledge Distillation implemented as classic Hinton et al. response-based distillation, trained only on the retained clients' data (the target client's samples are never shown again, so the ascent-driven forgetting isn't undone — only the accidental damage to everyone else is). `start_unlearning` now runs both stages back to back: it captures the checkpoint's original state dict as the KD teacher *before* calling `run_gradient_ascent` (which returns a separately-damaged copy), then feeds that damaged copy in as the KD student, along with every partition client except the target as `retained_clients`. Persists an intermediate status after each stage (`stage: "gradient_ascent"` then `stage: "knowledge_distillation"`) so a crash mid-pipeline still leaves the completed stage's results on disk, plus the final unlearned weights (`unlearning_final_model.pt`) alongside the existing GA checkpoint. Page 6 follows the same "live" strategy Phase 06 established for FL: the backend runs synchronously and returns the complete, real per-step/per-epoch history at once, and the frontend reveals it progressively (a `setTimeout`-paced replay of *already-measured* values, never a fabricated countdown) — first the Gradient Ascent step history, then the Knowledge Distillation epoch history, ending on a before/after client-accuracy comparison. Tuning note for the recovery-accuracy test: gradient ascent has no natural stopping point, so ascent hyperparameters that are too aggressive (high lr/many steps) blow the model into a degenerate collapsed state no amount of distillation can recover from within a few epochs — the unit test uses a handful of gentle ascent steps against a teacher that was trained to actually memorize its tiny synthetic dataset, so there's real recoverable signal for distillation to pull back in. Verified: `pytest tests/ -m "not slow"` (37 passed) and `npm run build` (frontend) both green in this session's container, now that a working torch/torchvision install was possible; the `@pytest.mark.slow` MNIST end-to-end test still needs a network path to torchvision's MNIST mirrors (`ossci-datasets.s3.amazonaws.com` / `yann.lecun.com`), which this sandbox doesn't allow but CI does. |
+ 
+ ---
+ Previous: [Phase 08 — Unlearning Engine — Gradient Ascent](../phase-08-gradient-ascent/README.md)
+diff --git a/tests/test_unlearning.py b/tests/test_unlearning.py
+index a79089f..ed51c71 100644
+--- a/tests/test_unlearning.py
++++ b/tests/test_unlearning.py
+@@ -9,12 +9,16 @@ torch = pytest.importorskip("torch")
+ 
+ from torch.utils.data import TensorDataset
+ 
++from core.federated.client import local_train
+ from core.federated.model import build_model
+ from core.partitioning.engine import partition_dataset
+ from core.unlearning.gradient_ascent import run_gradient_ascent
++from core.unlearning.knowledge_distillation import run_knowledge_distillation
+ from core.unlearning.storage import (
++    load_final_checkpoint,
+     load_ga_checkpoint,
+     load_unlearning_status,
++    save_final_checkpoint,
+     save_ga_checkpoint,
+     save_unlearning_status,
+ )
+@@ -108,6 +112,150 @@ def test_run_gradient_ascent_never_exceeds_requested_steps():
+     assert result["steps_requested"] == 10
+ 
+ 
++def test_run_knowledge_distillation_raises_on_empty_retained_clients():
++    model = build_model("cnn", channels=1, num_classes=3)
++    dataset = _synthetic_dataset()
++    with pytest.raises(ValueError):
++        run_knowledge_distillation(
++            teacher_state=model.state_dict(),
++            student_state=model.state_dict(),
++            model_id="cnn",
++            channels=1,
++            num_classes=3,
++            dataset=dataset,
++            retained_clients=[],
++            epochs=3,
++        )
++
++
++def test_run_knowledge_distillation_rejects_zero_epochs():
++    model = build_model("cnn", channels=1, num_classes=3)
++    dataset = _synthetic_dataset()
++    with pytest.raises(ValueError):
++        run_knowledge_distillation(
++            teacher_state=model.state_dict(),
++            student_state=model.state_dict(),
++            model_id="cnn",
++            channels=1,
++            num_classes=3,
++            dataset=dataset,
++            retained_clients=[{"client_id": 1, "indices": [0, 1, 2]}],
++            epochs=0,
++        )
++
++
++def test_run_knowledge_distillation_recovers_retained_accuracy():
++    """The Phase 09 acceptance criterion, directly: retained-client
++    accuracy must measurably recover after distillation.
++
++    Builds a teacher that has actually fit this (small, memorizable)
++    dataset, damages a copy of it with Gradient Ascent the same way
++    Phase 08 would, then checks that distilling the teacher's
++    knowledge back in recovers the damage on the retained clients.
++    """
++    torch.manual_seed(0)
++    dataset = _synthetic_dataset(num_samples=80, channels=1, size=8, num_classes=3, seed=0)
++    base_model = build_model("cnn", channels=1, num_classes=3)
++
++    # Full-batch, enough epochs to actually memorize this tiny dataset --
++    # otherwise there's nothing for the teacher to know that the
++    # damaged student doesn't, and "recovery" wouldn't mean anything.
++    teacher_result = local_train(
++        global_state=base_model.state_dict(),
++        model_id="cnn",
++        channels=1,
++        num_classes=3,
++        dataset=dataset,
++        indices=list(range(len(dataset))),
++        epochs=60,
++        lr=0.02,
++        batch_size=80,
++    )
++    teacher_state = teacher_result["state_dict"]
++
++    target_indices = list(range(0, 20))
++    retained_indices = list(range(20, 80))
++
++    # A handful of ascent steps -- enough to measurably hurt retained
++    # accuracy without diverging into a fully collapsed model that no
++    # amount of distillation could recover (gradient ascent has no
++    # natural stopping point, so a few too many steps overshoots fast).
++    ga_result = run_gradient_ascent(
++        global_state=teacher_state,
++        model_id="cnn",
++        channels=1,
++        num_classes=3,
++        dataset=dataset,
++        target_indices=target_indices,
++        steps=8,
++        lr=0.01,
++        batch_size=20,
++    )
++    damaged_state = ga_result["final_state_dict"]
++
++    retained_clients = [{"client_id": 1, "indices": retained_indices}]
++
++    result = run_knowledge_distillation(
++        teacher_state=teacher_state,
++        student_state=damaged_state,
++        model_id="cnn",
++        channels=1,
++        num_classes=3,
++        dataset=dataset,
++        retained_clients=retained_clients,
++        epochs=10,
++        lr=0.02,
++        batch_size=60,
++    )
++
++    assert result["final_retained_accuracy"] > result["initial_retained_accuracy"]
++    assert len(result["epoch_history"]) == 10
++    assert set(result["per_client_accuracy_before"].keys()) == {1}
++    assert set(result["per_client_accuracy_after"].keys()) == {1}
++
++
++def test_run_knowledge_distillation_tracks_per_client_accuracy():
++    torch.manual_seed(2)
++    dataset = _synthetic_dataset(num_samples=60, channels=1, size=8, num_classes=3, seed=2)
++    model = build_model("cnn", channels=1, num_classes=3)
++
++    retained_clients = [
++        {"client_id": 0, "indices": list(range(0, 20))},
++        {"client_id": 2, "indices": list(range(20, 40))},
++        {"client_id": 3, "indices": list(range(40, 60))},
++    ]
++
++    result = run_knowledge_distillation(
++        teacher_state=model.state_dict(),
++        student_state=model.state_dict(),
++        model_id="cnn",
++        channels=1,
++        num_classes=3,
++        dataset=dataset,
++        retained_clients=retained_clients,
++        epochs=2,
++        batch_size=16,
++    )
++
++    assert set(result["per_client_accuracy_before"].keys()) == {0, 2, 3}
++    assert set(result["per_client_accuracy_after"].keys()) == {0, 2, 3}
++    for epoch_entry in result["epoch_history"]:
++        assert {"epoch", "kd_loss", "retained_accuracy"} <= epoch_entry.keys()
++
++
++def test_final_checkpoint_save_and_load_round_trip(tmp_path, monkeypatch):
++    import core.unlearning.storage as storage
++
++    monkeypatch.setattr(storage, "EXPERIMENTS_DIR", tmp_path)
++    model = build_model("cnn", channels=1, num_classes=3)
++    save_final_checkpoint("test-exp", model.state_dict(), model_id="cnn", channels=1, num_classes=3)
++    loaded = load_final_checkpoint("test-exp")
++    assert loaded["model_id"] == "cnn"
++    assert loaded["channels"] == 1
++    assert loaded["num_classes"] == 3
++    assert loaded["state_dict"].keys() == model.state_dict().keys()
++
++
+ def test_unlearning_status_save_and_load_round_trip(tmp_path, monkeypatch):
+     import core.unlearning.storage as storage
+ 
+@@ -143,8 +291,9 @@ def test_ga_checkpoint_save_and_load_round_trip(tmp_path, monkeypatch):
+ @pytest.mark.slow
+ def test_start_unlearning_end_to_end_on_mnist(tmp_path, monkeypatch):
+     """Integration test: real partition + real (tiny) FedAvg run, then a
+-    real Gradient Ascent stage against the saved checkpoint -- mirrors
+-    the Phase 08 acceptance criteria end to end.
++    real Gradient Ascent + Knowledge Distillation pipeline against the
++    saved checkpoint -- mirrors the Phase 08 + Phase 09 acceptance
++    criteria end to end.
+     """
+     import core.federated.storage as fl_storage
+     import core.partitioning.storage as partition_storage
+@@ -175,17 +324,106 @@ def test_start_unlearning_end_to_end_on_mnist(tmp_path, monkeypatch):
+         steps=10,
+         lr=0.5,
+         batch_size=32,
++        kd_epochs=2,
++        kd_batch_size=64,
+     )
+ 
+     assert status["status"] == "complete"
+     assert status["target_client_id"] == 2
+-    assert status["final_loss"] > status["initial_loss"]
++    assert status["gradient_ascent"]["final_loss"] > status["gradient_ascent"]["initial_loss"]
+     assert (tmp_path / "mnist-unlearn-smoke" / "unlearning_ga_model.pt").exists()
+ 
++    kd = status["knowledge_distillation"]
++    assert kd["final_retained_accuracy"] >= 0
++    assert len(kd["epoch_history"]) == 2
++    assert (tmp_path / "mnist-unlearn-smoke" / "unlearning_final_model.pt").exists()
++
+     reloaded = get_unlearning_status("mnist-unlearn-smoke")
+     assert reloaded == status
+ 
+ 
++def test_start_unlearning_full_pipeline_synthetic(tmp_path, monkeypatch):
++    """Same pipeline as the MNIST integration test above, but against an
++    in-memory synthetic dataset (no torchvision download needed) so
++    this runs everywhere the fast unit tests do.
++    """
++    import core.federated.server as fl_server
++    import core.federated.storage as fl_storage
++    import core.partitioning.storage as partition_storage
++    import core.unlearning.storage as unlearning_storage
++    import core.unlearning.unlearning_engine as unlearning_engine
++
++    monkeypatch.setattr(fl_storage, "EXPERIMENTS_DIR", tmp_path)
++    monkeypatch.setattr(partition_storage, "EXPERIMENTS_DIR", tmp_path)
++    monkeypatch.setattr(unlearning_storage, "EXPERIMENTS_DIR", tmp_path)
++
++    torch.manual_seed(3)
++    # mnist's manifest entry pins channels=1, num_classes=10 -- match
++    # that here so run_federated_training's real load_manifest() call
++    # stays consistent with the fake dataset's shape.
++    train_set = _synthetic_dataset(num_samples=120, channels=1, size=8, num_classes=10, seed=3)
++    test_set = _synthetic_dataset(num_samples=40, channels=1, size=8, num_classes=10, seed=4)
++
++    class _FakeDataset:
++        def get_train(self_inner):
++            return train_set
++
++        def get_test(self_inner):
++            return test_set
++
++    fake_dataset = _FakeDataset()
++    monkeypatch.setattr(fl_server, "get_dataset", lambda dataset_id: fake_dataset)
++    monkeypatch.setattr(unlearning_engine, "get_dataset", lambda dataset_id: fake_dataset)
++
++    partition = {
++        "dataset": "mnist",
++        "num_clients": 4,
++        "strategy": "iid",
++        "seed": 3,
++        "clients": [
++            {"client_id": i, "indices": list(range(i * 30, (i + 1) * 30))} for i in range(4)
++        ],
++    }
++    partition_storage.save_partition("synthetic-unlearn", partition)
++    fl_server.run_federated_training(
++        experiment_id="synthetic-unlearn",
++        partition=partition,
++        model_id="cnn",
++        rounds=1,
++        local_epochs=1,
++        seed=3,
++        lr=0.1,
++        batch_size=16,
++    )
++
++    status = unlearning_engine.start_unlearning(
++        experiment_id="synthetic-unlearn",
++        client_id=1,
++        steps=8,
++        lr=0.5,
++        batch_size=8,
++        kd_epochs=3,
++        kd_lr=0.05,
++        kd_batch_size=16,
++    )
++
++    assert status["status"] == "complete"
++    assert status["stage"] == "knowledge_distillation"
++    assert status["target_client_id"] == 1
++
++    ga = status["gradient_ascent"]
++    assert ga["status"] == "complete"
++    assert ga["final_loss"] > ga["initial_loss"]
++
++    kd = status["knowledge_distillation"]
++    assert kd["status"] == "complete"
++    assert set(kd["per_client_accuracy_before"].keys()) == {0, 2, 3}
++    assert len(kd["epoch_history"]) == 3
++
++    assert (tmp_path / "synthetic-unlearn" / "unlearning_ga_model.pt").exists()
++    assert (tmp_path / "synthetic-unlearn" / "unlearning_final_model.pt").exists()
++
++
+ def test_start_unlearning_rejects_unknown_client(tmp_path, monkeypatch):
+     import core.federated.storage as fl_storage
+     import core.partitioning.storage as partition_storage
+-- 
+2.43.0
+

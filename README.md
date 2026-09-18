@@ -25,7 +25,7 @@ Implementation is in progress. See the Phase Index below for what's done and wha
 | 07 | [`phase-07-global-model-target-selection/`](./phase-07-global-model-target-selection/README.md) | Global Model & Target Client Selection | Complete |
 | 08 | [`phase-08-gradient-ascent/`](./phase-08-gradient-ascent/README.md) | Unlearning Engine — Gradient Ascent | Complete |
 | 09 | [`phase-09-knowledge-distillation/`](./phase-09-knowledge-distillation/README.md) | Knowledge Distillation & Live Unlearning Animation | Complete |
-| 10 | [`phase-10-evaluation-mia/`](./phase-10-evaluation-mia/README.md) | Evaluation & Membership Inference Attack | Not Started |
+| 10 | [`phase-10-evaluation-mia/`](./phase-10-evaluation-mia/README.md) | Evaluation & Membership Inference Attack | Complete |
 | 11 | [`phase-11-comparison-retraining/`](./phase-11-comparison-retraining/README.md) | Before/After, Full Retraining Baseline & Runtime Comparison | Not Started |
 | 12 | [`phase-12-quick-demo-model-library/`](./phase-12-quick-demo-model-library/README.md) | Quick Unlearning Demo & Model Library | Not Started |
 | 13 | [`phase-13-dashboard-ux/`](./phase-13-dashboard-ux/README.md) | Dashboard UX — Navigation, State & Visual Design System | Not Started |
@@ -44,7 +44,7 @@ Implementation is in progress. See the Phase Index below for what's done and wha
 - [x] Phase 07 — Global Model & Target Client Selection
 - [x] Phase 08 — Unlearning Engine: Gradient Ascent
 - [x] Phase 09 — Knowledge Distillation & Live Animation
-- [ ] Phase 10 — Evaluation & Membership Inference Attack
+- [x] Phase 10 — Evaluation & Membership Inference Attack
 - [ ] Phase 11 — Before/After, Retraining Baseline & Runtime Comparison
 - [ ] Phase 12 — Quick Unlearning Demo & Model Library
 - [ ] Phase 13 — Dashboard UX: Navigation, State & Visual Design
