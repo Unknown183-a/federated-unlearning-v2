@@ -43,11 +43,28 @@ def load_unlearning_status(experiment_id: str) -> dict:
 
     Raises FileNotFoundError if `start_unlearning` hasn't been run yet
     for this experiment.
+
+    JSON object keys are always strings, but
+    ``knowledge_distillation.per_client_accuracy_before/after`` are
+    built (and consumed elsewhere, e.g. by the frontend's per-client
+    bars) as ``{client_id: accuracy}`` with an int client_id -- the
+    same shape ``run_knowledge_distillation`` returns in memory before
+    it's ever serialized. Restore that shape here so a reloaded status
+    is equal to the in-memory one `start_unlearning` returned, instead
+    of silently drifting to string keys after a save/load round trip.
     """
     path = _status_path(experiment_id)
     if not path.exists():
         raise FileNotFoundError(f"No unlearning status found for experiment '{experiment_id}'")
-    return json.loads(path.read_text())
+    status = json.loads(path.read_text())
+
+    kd = status.get("knowledge_distillation")
+    if kd:
+        for field in ("per_client_accuracy_before", "per_client_accuracy_after"):
+            if field in kd:
+                kd[field] = {int(k): v for k, v in kd[field].items()}
+
+    return status
 
 
 def save_ga_checkpoint(
