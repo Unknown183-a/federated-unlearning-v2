@@ -45,7 +45,7 @@ Implementation is in progress. See the Phase Index below for what's done and wha
 - [x] Phase 08 — Unlearning Engine: Gradient Ascent
 - [x] Phase 09 — Knowledge Distillation & Live Animation
 - [x] Phase 10 — Evaluation & Membership Inference Attack
-- [ ] Phase 11 — Before/After, Retraining Baseline & Runtime Comparison
+- [x] Phase 11 — Before/After, Retraining Baseline & Runtime Comparison
 - [ ] Phase 12 — Quick Unlearning Demo & Model Library
 - [ ] Phase 13 — Dashboard UX: Navigation, State & Visual Design
 - [ ] Phase 14 — Backend Service Layer & Compute Backend Architecture

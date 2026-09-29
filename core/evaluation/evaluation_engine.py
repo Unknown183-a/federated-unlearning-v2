@@ -35,6 +35,55 @@ from core.unlearning.storage import load_final_checkpoint, load_unlearning_statu
 DEFAULT_NON_MEMBER_SAMPLE_SIZE = 200
 
 
+def evaluate_model_state(
+    state: dict,
+    model_id: str,
+    channels: int,
+    num_classes: int,
+    train_data,
+    test_data,
+    target_client: dict,
+    retained_clients: list[dict],
+    non_member_indices: list[int],
+    device: str = "cpu",
+) -> dict:
+    """The four per-model Page 7 metrics for one set of weights.
+
+    Shared by `evaluate_experiment` (original + unlearned models) and
+    Phase 11's retraining baseline (retrained model), so all three
+    models are scored by literally the same code against the same
+    target-client indices, retained clients, and MIA non-member set.
+    """
+    global_accuracy = evaluate_global_accuracy(
+        state, model_id, channels, num_classes, test_data, device=device
+    )
+    forget_client_accuracy = evaluate_client_accuracy(
+        state, model_id, channels, num_classes, train_data, target_client["indices"], device=device
+    )
+    retained = evaluate_retained_accuracy(
+        state, model_id, channels, num_classes, train_data, retained_clients, device=device
+    )
+    mia = run_membership_inference(
+        state,
+        model_id,
+        channels,
+        num_classes,
+        train_data,
+        target_client["indices"],
+        test_data,
+        non_member_indices,
+        device=device,
+    )
+    return {
+        "global_accuracy": global_accuracy,
+        "forget_client_accuracy": forget_client_accuracy,
+        "retained_client_accuracy": retained["mean"],
+        "retained_client_accuracy_per_client": retained["per_client"],
+        "mia_success": mia["attack_accuracy"],
+        "mia_detail": mia,
+    }
+
+
 def evaluate_experiment(
     experiment_id: str,
     non_member_sample_size: int = DEFAULT_NON_MEMBER_SAMPLE_SIZE,
@@ -86,37 +135,18 @@ def evaluate_experiment(
     }
 
     for label, checkpoint in (("before", before_checkpoint), ("after", after_checkpoint)):
-        state = checkpoint["state_dict"]
-
-        global_accuracy = evaluate_global_accuracy(
-            state, model_id, channels, num_classes, test_data, device=device
-        )
-        forget_client_accuracy = evaluate_client_accuracy(
-            state, model_id, channels, num_classes, train_data, target_client["indices"], device=device
-        )
-        retained = evaluate_retained_accuracy(
-            state, model_id, channels, num_classes, train_data, retained_clients, device=device
-        )
-        mia = run_membership_inference(
-            state,
+        results[label] = evaluate_model_state(
+            checkpoint["state_dict"],
             model_id,
             channels,
             num_classes,
             train_data,
-            target_client["indices"],
             test_data,
+            target_client,
+            retained_clients,
             non_member_indices,
             device=device,
         )
-
-        results[label] = {
-            "global_accuracy": global_accuracy,
-            "forget_client_accuracy": forget_client_accuracy,
-            "retained_client_accuracy": retained["mean"],
-            "retained_client_accuracy_per_client": retained["per_client"],
-            "mia_success": mia["attack_accuracy"],
-            "mia_detail": mia,
-        }
 
     ga_summary = status.get("gradient_ascent") or {}
     kd_summary = status.get("knowledge_distillation") or {}

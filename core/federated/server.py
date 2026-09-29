@@ -44,7 +44,7 @@ def _evaluate(model, test_loader, device: str) -> tuple[float, float]:
     return accuracy, avg_loss
 
 
-def run_federated_training(
+def fedavg_train(
     experiment_id: str,
     partition: dict,
     model_id: str,
@@ -56,12 +56,15 @@ def run_federated_training(
     eval_batch_size: int = 256,
     device: str = "cpu",
 ) -> dict:
-    """Run the full FedAvg loop for `rounds` rounds and persist the result.
+    """Run the full FedAvg loop for `rounds` rounds *without* persisting anything.
 
     `partition` is a full partition dict from core.partitioning (with
-    per-client sample indices), already computed for this experiment.
-    Returns the same history dict that gets written to
-    experiments/<experiment_id>/fl_history.json.
+    per-client sample indices). Returns ``(history, final_state_dict)``.
+
+    Split out of `run_federated_training` in Phase 11 so the full-
+    retraining baseline can run the exact same loop against a
+    partition with the target client removed, without overwriting the
+    original experiment's ``fl_history.json``/``global_model.pt``.
     """
     if rounds < 1:
         raise ValueError("rounds must be >= 1")
@@ -160,11 +163,51 @@ def run_federated_training(
         "rounds": rounds,
         "local_epochs": local_epochs,
         "seed": seed,
+        # Phase 11 addendum: record the optimizer hyperparameters too, so
+        # the retraining baseline can reproduce this run's protocol
+        # exactly instead of assuming the defaults.
+        "lr": lr,
+        "batch_size": batch_size,
         "final_accuracy": round_history[-1]["accuracy"],
         "final_loss": round_history[-1]["loss"],
         "round_history": round_history,
     }
+    return history, global_state
 
+
+def run_federated_training(
+    experiment_id: str,
+    partition: dict,
+    model_id: str,
+    rounds: int,
+    local_epochs: int,
+    seed: int,
+    lr: float = 0.01,
+    batch_size: int = 32,
+    eval_batch_size: int = 256,
+    device: str = "cpu",
+) -> dict:
+    """Run the full FedAvg loop for `rounds` rounds and persist the result.
+
+    `partition` is a full partition dict from core.partitioning (with
+    per-client sample indices), already computed for this experiment.
+    Returns the same history dict that gets written to
+    experiments/<experiment_id>/fl_history.json.
+    """
+    history, global_state = fedavg_train(
+        experiment_id=experiment_id,
+        partition=partition,
+        model_id=model_id,
+        rounds=rounds,
+        local_epochs=local_epochs,
+        seed=seed,
+        lr=lr,
+        batch_size=batch_size,
+        eval_batch_size=eval_batch_size,
+        device=device,
+    )
+
+    meta = load_manifest()[partition["dataset"]]
     save_fl_history(experiment_id, history)
     # Phase 08 addendum: persist the trained weights too, not just the
     # round-by-round metrics -- the Gradient Ascent stage needs the
@@ -173,8 +216,8 @@ def run_federated_training(
         experiment_id,
         state_dict=global_state,
         model_id=model_id,
-        channels=channels,
-        num_classes=num_classes,
+        channels=meta["channels"],
+        num_classes=meta["num_classes"],
     )
     return history
 

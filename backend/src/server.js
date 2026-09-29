@@ -7,6 +7,7 @@ import partitionRouter from "./routes/partition.js";
 import trainingRouter from "./routes/training.js";
 import unlearningRouter from "./routes/unlearning.js";
 import evaluationRouter from "./routes/evaluation.js";
+import retrainingRouter from "./routes/retraining.js";
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use("/api/partition", partitionRouter);
 app.use("/api/training", trainingRouter);
 app.use("/api/unlearning", unlearningRouter);
 app.use("/api/evaluation", evaluationRouter);
+app.use("/api/retraining", retrainingRouter);
 
 // Health-check route (Phase 00 deliverable).
 app.get("/status", async (_req, res) => {
