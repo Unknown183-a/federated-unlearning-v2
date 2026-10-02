@@ -8,6 +8,7 @@ import trainingRouter from "./routes/training.js";
 import unlearningRouter from "./routes/unlearning.js";
 import evaluationRouter from "./routes/evaluation.js";
 import retrainingRouter from "./routes/retraining.js";
+import experimentsRouter from "./routes/experiments.js";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use("/api/training", trainingRouter);
 app.use("/api/unlearning", unlearningRouter);
 app.use("/api/evaluation", evaluationRouter);
 app.use("/api/retraining", retrainingRouter);
+app.use("/api/experiments", experimentsRouter);
 
 // Health-check route (Phase 00 deliverable).
 app.get("/status", async (_req, res) => {

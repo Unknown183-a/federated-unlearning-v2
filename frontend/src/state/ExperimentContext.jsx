@@ -43,8 +43,29 @@ export function ExperimentProvider({ children }) {
     });
   }
 
+  // Phase 12: point this context at an already-persisted experiment
+  // (from the Model Library or Experiment History) instead of the
+  // fresh draft one started with. Used by both entry points so a
+  // stored experiment is loaded identically either way -- every
+  // field this config carries is overwritten from the artifact
+  // summary, not merged, since the two experiments are unrelated.
+  function loadExperiment(summary) {
+    setConfigState({
+      ...DEFAULT_CONFIG,
+      experiment_id: summary.experiment_id,
+      dataset: summary.dataset,
+      num_clients: summary.num_clients ?? DEFAULT_CONFIG.num_clients,
+      partition_strategy: summary.partition_strategy ?? DEFAULT_CONFIG.partition_strategy,
+      model: summary.model ?? DEFAULT_CONFIG.model,
+      federated_rounds: summary.federated_rounds ?? DEFAULT_CONFIG.federated_rounds,
+      seed: summary.seed ?? DEFAULT_CONFIG.seed,
+      training_mode: "load_existing",
+      target_client_id: summary.target_client_id ?? null,
+    });
+  }
+
   return (
-    <ExperimentContext.Provider value={{ config, updateConfig }}>
+    <ExperimentContext.Provider value={{ config, updateConfig, loadExperiment }}>
       {children}
     </ExperimentContext.Provider>
   );
