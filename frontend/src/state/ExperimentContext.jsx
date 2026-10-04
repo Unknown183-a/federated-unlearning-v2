@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 // Central experiment state (Dashboard Spec Ch.34).
 // Every later phase (partitioning, training, unlearning, evaluation)
@@ -15,6 +15,14 @@ const DEFAULT_CONFIG = {
   target_client_id: null, // set on Phase 07's Client Selection page -- the client to unlearn
 };
 
+const EMPTY_STAGES = {
+  partitioned: false,
+  trained: false,
+  unlearned: false,
+  evaluated: false,
+  compared: false,
+};
+
 function generateExperimentId() {
   return `exp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -28,6 +36,56 @@ export function ExperimentProvider({ children }) {
     ...DEFAULT_CONFIG,
     experiment_id: generateExperimentId(),
   }));
+
+  // Phase 13: how far the *current* experiment_id has actually gotten,
+  // read from the Phase 12 registry (GET /api/experiments/:id) rather
+  // than re-derived separately by the nav stepper and the pipeline
+  // mini-map -- both read this one value, so they can never disagree
+  // about what stage the experiment is at ("consolidate page state
+  // into one central store"). This is read-only progress, not
+  // editable config, so it lives alongside `config` rather than in it.
+  const [stages, setStages] = useState(EMPTY_STAGES);
+  const [stagesStatus, setStagesStatus] = useState("idle"); // idle | loading | ready
+
+  // Always holds the *current* experiment_id, independent of which
+  // render's refreshStages closure is running -- a plain dependency
+  // comparison inside the fetch callback would compare `id` against
+  // whatever config.experiment_id that specific closure captured,
+  // which is always equal to `id` itself and so never actually
+  // detects that the user has since switched experiments.
+  const activeExperimentIdRef = useRef(config.experiment_id);
+  activeExperimentIdRef.current = config.experiment_id;
+
+  const refreshStages = useCallback((experimentId) => {
+    const id = experimentId ?? activeExperimentIdRef.current;
+    if (!id) return;
+    setStagesStatus("loading");
+    fetch(`/api/experiments/${encodeURIComponent(id)}`)
+      .then(async (res) => {
+        if (id !== activeExperimentIdRef.current) return; // stale response -- experiment changed since this call
+        if (!res.ok) {
+          setStages(EMPTY_STAGES);
+          setStagesStatus("ready");
+          return;
+        }
+        const data = await res.json();
+        setStages(data.experiment?.stages ?? EMPTY_STAGES);
+        setStagesStatus("ready");
+      })
+      .catch(() => {
+        if (id !== activeExperimentIdRef.current) return;
+        setStages(EMPTY_STAGES);
+        setStagesStatus("ready");
+      });
+  }, []);
+
+  // Re-read stage completion every time the active experiment changes
+  // -- including when navigating back to a page after a stage
+  // finished, so the stepper/mini-map never show stale progress.
+  useEffect(() => {
+    setStages(EMPTY_STAGES);
+    refreshStages(config.experiment_id);
+  }, [config.experiment_id, refreshStages]);
 
   function updateConfig(patch) {
     setConfigState((prev) => {
@@ -62,10 +120,17 @@ export function ExperimentProvider({ children }) {
       training_mode: "load_existing",
       target_client_id: summary.target_client_id ?? null,
     });
+    // summary already carries a `stages` object (it came from the same
+    // registry endpoint) -- seed it immediately instead of waiting on
+    // a round trip, since loadExperiment is always immediately
+    // followed by a navigation.
+    if (summary.stages) setStages(summary.stages);
   }
 
   return (
-    <ExperimentContext.Provider value={{ config, updateConfig, loadExperiment }}>
+    <ExperimentContext.Provider
+      value={{ config, updateConfig, loadExperiment, stages, stagesStatus, refreshStages }}
+    >
       {children}
     </ExperimentContext.Provider>
   );

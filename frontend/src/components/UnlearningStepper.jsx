@@ -19,7 +19,7 @@ const ICON = {
 const COLOR = {
   done: "border-green-300 bg-green-50 text-green-700",
   running: "border-indigo-400 bg-indigo-50 text-indigo-700 animate-pulse",
-  waiting: "border-gray-200 bg-gray-50 text-gray-400",
+  waiting: "border-gray-200 bg-gray-50 text-gray-500",
 };
 
 export default function UnlearningStepper({ stageStatus }) {

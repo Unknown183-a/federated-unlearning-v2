@@ -43,8 +43,10 @@ function MetricCard({ label, before, after, goodDirection, note }) {
       </dl>
       <p className={`mt-3 text-xs font-medium ${improved ? "text-emerald-700" : "text-rose-700"}`}>
         {delta(before, after)}
+        {/* Not color alone -- direction is stated in words too. */}
+        <span className="font-normal text-gray-500"> ({improved ? "improved" : "regressed"})</span>
       </p>
-      {note && <p className="mt-1 text-xs text-gray-400">{note}</p>}
+      {note && <p className="mt-1 text-xs text-gray-500">{note}</p>}
     </div>
   );
 }

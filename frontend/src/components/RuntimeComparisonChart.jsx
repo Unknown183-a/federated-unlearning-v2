@@ -48,7 +48,7 @@ export default function RuntimeComparisonChart({ runtime }) {
 
       <div className="mt-5 border-t border-gray-100 pt-4">
         {!haveBoth && (
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-500">
             Runtime for both runs is required to compare -- run unlearning, evaluation, and the
             retraining baseline for this experiment.
           </p>

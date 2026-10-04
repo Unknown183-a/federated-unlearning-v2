@@ -22,6 +22,13 @@ export default function RetrainingComparisonChart({ metrics }) {
   const barHeight = 14;
   const barGap = 4;
 
+  // Phase 13 accessibility pass: a real text-equivalent of the three
+  // bars per row, not a generic "Comparison chart" label.
+  const summaryId = "retraining-comparison-summary";
+  const summary = metrics
+    .map((m) => `${m.label}: original ${pct(m.original)}, unlearned ${pct(m.unlearned)}, retrained ${pct(m.retrained)}`)
+    .join(". ");
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -36,7 +43,10 @@ export default function RetrainingComparisonChart({ metrics }) {
         </ul>
       </div>
 
-      <svg viewBox={`0 0 ${WIDTH} ${height}`} className="mt-4 w-full" role="img" aria-label="Comparison chart">
+      <p className="sr-only" id={summaryId}>
+        Original vs unlearned vs retrained, by metric. {summary}.
+      </p>
+      <svg viewBox={`0 0 ${WIDTH} ${height}`} className="mt-4 w-full" role="img" aria-labelledby={summaryId}>
         {metrics.map((metric, rowIndex) => {
           const rowTop = PADDING.top + rowIndex * ROW_HEIGHT;
           const groupHeight = SERIES.length * (barHeight + barGap) - barGap;

@@ -20,7 +20,7 @@ export default function ModelLibraryCard({ experiment, onSelect }) {
           Ready
         </span>
       </div>
-      <p className="mt-1 text-xs text-gray-400">{experiment.experiment_id}</p>
+      <p className="mt-1 text-xs text-gray-500">{experiment.experiment_id}</p>
       <dl className="mt-3 space-y-1 text-xs text-gray-600">
         <div className="flex justify-between">
           <dt className="font-medium text-gray-700">Clients</dt>

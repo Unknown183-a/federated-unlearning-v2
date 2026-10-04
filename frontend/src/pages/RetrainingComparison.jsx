@@ -19,7 +19,7 @@ import RuntimeComparisonChart from "../components/RuntimeComparisonChart.jsx";
 function ProtocolNote({ protocol }) {
   if (!protocol || protocol.hyperparameters_recorded) return null;
   return (
-    <p className="mt-1 text-xs text-gray-400">
+    <p className="mt-1 text-xs text-gray-500">
       This experiment's original training history predates Phase 11's lr/batch-size recording, so
       the retraining baseline used this project's standing defaults for those two settings.
     </p>
@@ -27,7 +27,7 @@ function ProtocolNote({ protocol }) {
 }
 
 export default function RetrainingComparison() {
-  const { config } = useExperimentConfig();
+  const { config, refreshStages } = useExperimentConfig();
 
   // loading | ready | missing -- "ready" means Phase 10's evaluation is stored.
   const [gateStatus, setGateStatus] = useState("loading");
@@ -94,11 +94,12 @@ export default function RetrainingComparison() {
       setResultKind("measured");
       setComparison(data.comparison);
       setRunStatus("ready");
+      refreshStages();
     } catch (err) {
       setError(err.message);
       setRunStatus("error");
     }
-  }, [config.experiment_id]);
+  }, [config.experiment_id, refreshStages]);
 
   return (
     <section className="space-y-8">
@@ -194,7 +195,7 @@ export default function RetrainingComparison() {
                 </dd>
               </div>
             </dl>
-            <p className="mt-3 text-xs text-gray-400">
+            <p className="mt-3 text-xs text-gray-500">
               Retraining excluded client {comparison.target_client_id} and trained on{" "}
               {comparison.retraining_run.num_clients_trained} remaining client
               {comparison.retraining_run.num_clients_trained === 1 ? "" : "s"}. Retrained numbers

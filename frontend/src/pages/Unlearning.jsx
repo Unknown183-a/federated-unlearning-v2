@@ -19,7 +19,7 @@ import ClientInfluenceBars from "../components/ClientInfluenceBars.jsx";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function Unlearning() {
-  const { config } = useExperimentConfig();
+  const { config, refreshStages } = useExperimentConfig();
 
   const [gateStatus, setGateStatus] = useState("loading"); // loading | ready | missing
   const [runStatus, setRunStatus] = useState("idle"); // idle | loading | error | ready
@@ -95,6 +95,7 @@ export default function Unlearning() {
       setResultKind("measured");
       setResult(data.status);
       setRunStatus("ready");
+      refreshStages();
     } catch (err) {
       setError(err.message);
       setRunStatus("error");

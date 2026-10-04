@@ -30,7 +30,7 @@ function averageLocalLoss(round) {
 }
 
 export default function FederatedLearning() {
-  const { config } = useExperimentConfig();
+  const { config, refreshStages } = useExperimentConfig();
   const isLiveMode = config.training_mode === "run_federated_training";
 
   const [loadExperimentId, setLoadExperimentId] = useState(config.experiment_id);
@@ -155,6 +155,7 @@ export default function FederatedLearning() {
       setResultKind("measured");
       setHistory(data.history);
       setStatus("ready");
+      refreshStages();
     } catch (err) {
       setError(err.message);
       setStatus("error");

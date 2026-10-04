@@ -15,23 +15,43 @@ function dominantClasses(classCounts, limit = 3) {
 export default function ClientCard({ client, strategy, selectable, selected, onSelect }) {
   const dominant = dominantClasses(client.class_counts);
 
+  // "selectable" is only ever true on Client Selection -- "selected"
+  // there always means "the current unlearning target", so this uses
+  // the shared target color (rose), not a generic selection color, to
+  // stay consistent with how the target client is highlighted
+  // everywhere else (ClientInfluenceBars, GradientAscentPanel) --
+  // Phase 13's "target-client highlighting" task.
+  const interactionProps = selectable
+    ? {
+        role: "button",
+        tabIndex: 0,
+        onClick: () => onSelect(client.client_id),
+        onKeyDown: (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(client.client_id);
+          }
+        },
+      }
+    : {};
+
   return (
     <article
-      aria-label={`Client ${client.client_id}`}
+      aria-label={`Client ${client.client_id}${selectable ? (selected ? ", selected as unlearning target" : ", select as unlearning target") : ""}`}
       aria-pressed={selectable ? selected : undefined}
-      onClick={selectable ? () => onSelect(client.client_id) : undefined}
+      {...interactionProps}
       className={`rounded-lg border bg-white p-4 shadow-sm ${
-        selectable ? "cursor-pointer transition-colors" : ""
+        selectable ? "cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2" : ""
       } ${
         selected
-          ? "border-indigo-500 ring-2 ring-indigo-200"
+          ? "border-rose-500 ring-2 ring-rose-200"
           : "border-gray-200"
-      } ${selectable && !selected ? "hover:border-indigo-300" : ""}`}
+      } ${selectable && !selected ? "hover:border-rose-300" : ""}`}
     >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-gray-900">Client {client.client_id}</h3>
         {selectable && selected && (
-          <span className="shrink-0 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white">
+          <span className="shrink-0 rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold text-white">
             Target
           </span>
         )}

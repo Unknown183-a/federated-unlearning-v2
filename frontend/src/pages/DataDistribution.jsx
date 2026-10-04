@@ -5,7 +5,7 @@ import ClientCardGrid from "../components/ClientCardGrid.jsx";
 import DistributionHeatmap from "../components/DistributionHeatmap.jsx";
 
 export default function DataDistribution() {
-  const { config } = useExperimentConfig();
+  const { config, refreshStages } = useExperimentConfig();
   const [partition, setPartition] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -33,6 +33,7 @@ export default function DataDistribution() {
       }
       const data = await res.json();
       setPartition(data.partition);
+      refreshStages();
     } catch (err) {
       setError(err.message);
     } finally {

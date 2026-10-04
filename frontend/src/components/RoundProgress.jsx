@@ -43,7 +43,7 @@ export default function RoundProgress({ currentRound, totalRounds, clients, stag
                 className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium ${
                   c.completed
                     ? "border-green-200 bg-green-50 text-green-700"
-                    : "border-gray-200 bg-gray-50 text-gray-400"
+                    : "border-gray-200 bg-gray-50 text-gray-500"
                 }`}
               >
                 <span aria-hidden="true">{c.completed ? "✓" : "…"}</span>
@@ -56,13 +56,13 @@ export default function RoundProgress({ currentRound, totalRounds, clients, stag
         <div className="space-y-3 sm:w-44">
           <div>
             <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500">Aggregation</h3>
-            <p className={`mt-1 text-sm font-medium ${aggregationDone ? "text-green-700" : "text-gray-400"}`}>
+            <p className={`mt-1 text-sm font-medium ${aggregationDone ? "text-green-700" : "text-gray-500"}`}>
               {aggregationDone ? "✓ FedAvg" : "… FedAvg"}
             </p>
           </div>
           <div>
             <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500">Global Model</h3>
-            <p className={`mt-1 text-sm font-medium ${modelUpdated ? "text-green-700" : "text-gray-400"}`}>
+            <p className={`mt-1 text-sm font-medium ${modelUpdated ? "text-green-700" : "text-gray-500"}`}>
               {modelUpdated ? "✓ Updated" : "… Updated"}
             </p>
           </div>

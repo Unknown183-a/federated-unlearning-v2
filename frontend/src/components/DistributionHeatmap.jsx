@@ -19,6 +19,19 @@ export default function DistributionHeatmap({ partition }) {
   );
   const grouped = num_classes > GROUP_SIZE;
 
+  // Phase 13 accessibility pass: the heatmap encodes sample count as
+  // cell color alone, which is invisible to a screen reader and
+  // unreliable for colorblind users. Each cell gets its count as real
+  // (visually hidden) text, and the client with the fewest distinct
+  // classes -- the most visibly imbalanced row -- is called out in a
+  // one-line summary, same idea as the text-equivalent on the line
+  // charts.
+  const mostImbalanced = clients.reduce((worst, c) =>
+    c.num_classes_present < worst.num_classes_present ? c : worst
+  );
+  const heatmapSummaryId = "heatmap-summary";
+  const heatmapSummary = `Heatmap of ${clients.length} clients by ${num_classes} classes. Darker cells mean more samples. Client ${mostImbalanced.client_id} has the fewest distinct classes present (${mostImbalanced.num_classes_present} of ${num_classes}).`;
+
   return (
     <section
       aria-labelledby="heatmap-heading"
@@ -33,8 +46,11 @@ export default function DistributionHeatmap({ partition }) {
         {grouped &&
           ` Classes are grouped in blocks of ${GROUP_SIZE}; scroll horizontally to see them all.`}
       </p>
+      <p className="sr-only" id={heatmapSummaryId}>
+        {heatmapSummary}
+      </p>
       <div className="mt-4 max-w-full overflow-x-auto">
-        <table className="border-collapse text-xs">
+        <table aria-describedby={heatmapSummaryId} className="border-collapse text-xs">
           <thead>
             {grouped && (
               <tr>
@@ -88,7 +104,11 @@ export default function DistributionHeatmap({ partition }) {
                         grouped && c % GROUP_SIZE === 0 ? "border-l-2 border-l-gray-300" : "border-l border-l-gray-100"
                       } border-b-gray-100`}
                       style={{ backgroundColor: cellColor(count, maxCount) }}
-                    />
+                    >
+                      <span className="sr-only">
+                        Client {client.client_id}, Class {c}: {count.toLocaleString()} samples
+                      </span>
+                    </td>
                   );
                 })}
               </tr>

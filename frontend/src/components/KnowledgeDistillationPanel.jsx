@@ -28,11 +28,11 @@ export default function KnowledgeDistillationPanel({
         <div className="rounded-md border-2 border-indigo-600 bg-indigo-50 px-4 py-2 font-semibold text-indigo-800">
           Original Model — Teacher
         </div>
-        <span className="text-xs text-gray-400">↓ soft predictions ↓</span>
+        <span className="text-xs text-gray-500">↓ soft predictions ↓</span>
         <div className="rounded-md border-2 border-gray-400 bg-gray-50 px-6 py-3 font-semibold text-gray-700">
           KD Loss · Temperature {temperature}
         </div>
-        <span className="text-xs text-gray-400">↓ update ↓</span>
+        <span className="text-xs text-gray-500">↓ update ↓</span>
         <div className="rounded-md border-2 border-teal-600 bg-teal-50 px-4 py-2 font-semibold text-teal-800">
           Unlearned Model — Student
         </div>

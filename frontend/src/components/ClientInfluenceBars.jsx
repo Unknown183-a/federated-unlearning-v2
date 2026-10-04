@@ -10,8 +10,10 @@ function Row({ label, value, highlight }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return (
     <div className="flex items-center gap-3">
-      <span className={`w-24 shrink-0 text-xs font-medium ${highlight ? "text-rose-700" : "text-gray-600"}`}>
+      <span className={`w-28 shrink-0 text-xs font-medium ${highlight ? "text-rose-700" : "text-gray-600"}`}>
         {label}
+        {/* Not color alone -- the target row is also labeled in text. */}
+        {highlight && <span className="font-normal text-rose-500"> (target)</span>}
       </span>
       <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-100">
         <div
@@ -43,7 +45,7 @@ export default function ClientInfluenceBars({ targetClientId, targetBefore, targ
 
       <div className="mt-5 grid gap-6 sm:grid-cols-2">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Before</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Before</h3>
           <div className="mt-3 space-y-2.5">
             <Row label={`Client ${targetClientId}`} value={targetBefore} highlight />
             {retainedClientIds.map((id) => (
@@ -52,7 +54,7 @@ export default function ClientInfluenceBars({ targetClientId, targetBefore, targ
           </div>
         </div>
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">After</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">After</h3>
           <div className="mt-3 space-y-2.5">
             <Row label={`Client ${targetClientId}`} value={targetAfter} highlight />
             {retainedClientIds.map((id) => (

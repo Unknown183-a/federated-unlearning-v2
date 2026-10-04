@@ -27,7 +27,7 @@ export default function FedAvgDiagram({ clients, stage }) {
         >
           Server — Global Model
         </div>
-        <span className="text-xs text-gray-400">↓ broadcast global model ↓</span>
+        <span className="text-xs text-gray-500">↓ broadcast global model ↓</span>
 
         <div className="flex flex-wrap justify-center gap-3">
           {visible.map((c) => (
@@ -42,17 +42,21 @@ export default function FedAvgDiagram({ clients, stage }) {
               }`}
             >
               Client {c.client_id}
-              <div className="text-[10px] font-normal text-gray-400">local data · local train</div>
+              {/* Not color alone -- each chip's training state is also in text. */}
+              <span className="sr-only">
+                , {c.completed ? "finished local training" : trainingActive ? "training locally" : "waiting"}
+              </span>
+              <div className="text-[10px] font-normal text-gray-500">local data · local train</div>
             </div>
           ))}
           {overflow > 0 && (
-            <div className="flex items-center rounded-md border border-dashed border-gray-300 px-3 py-2 text-xs text-gray-400">
+            <div className="flex items-center rounded-md border border-dashed border-gray-300 px-3 py-2 text-xs text-gray-500">
               +{overflow} more
             </div>
           )}
         </div>
 
-        <span className="text-xs text-gray-400">↑ model updates ↑</span>
+        <span className="text-xs text-gray-500">↑ model updates ↑</span>
         <div
           className={`rounded-md border-2 px-4 py-2 text-center text-sm font-semibold transition-colors ${
             aggregating || updated
@@ -62,8 +66,8 @@ export default function FedAvgDiagram({ clients, stage }) {
         >
           FedAvg
         </div>
-        <span className="text-xs text-gray-400">↓ updated global model ↓</span>
-        <div className={`text-sm font-medium ${updated ? "text-indigo-700" : "text-gray-400"}`}>
+        <span className="text-xs text-gray-500">↓ updated global model ↓</span>
+        <div className={`text-sm font-medium ${updated ? "text-indigo-700" : "text-gray-500"}`}>
           {updated ? "Global model updated — next round" : "Waiting for this round to complete"}
         </div>
       </div>

@@ -12,7 +12,7 @@ import EvaluationMetrics from "../components/EvaluationMetrics.jsx";
 // (real, non-trivial) accuracy/MIA computation on every page visit.
 
 export default function Evaluation() {
-  const { config } = useExperimentConfig();
+  const { config, refreshStages } = useExperimentConfig();
 
   const [gateStatus, setGateStatus] = useState("loading"); // loading | ready | missing
   const [runStatus, setRunStatus] = useState("idle"); // idle | loading | error | ready
@@ -78,6 +78,7 @@ export default function Evaluation() {
       setResultKind("measured");
       setResults(data.results);
       setRunStatus("ready");
+      refreshStages();
     } catch (err) {
       setError(err.message);
       setRunStatus("error");

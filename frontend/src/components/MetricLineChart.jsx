@@ -51,6 +51,20 @@ export default function MetricLineChart({
   const xTicks = niceTicks(1, maxRound, Math.min(Math.max(maxRound, 2), 6)).map((v) => Math.round(v));
   const last = data[data.length - 1];
 
+  // Phase 13 accessibility pass: a real text-equivalent, not just the
+  // chart's title as its accessible name. Describes the trend in
+  // words so a screen-reader user gets the same takeaway a sighted
+  // user gets from glancing at the line's shape.
+  const chartId = `metric-line-chart-${title.replace(/\s+/g, "-").toLowerCase()}`;
+  let summary = emptyHint || "No data yet.";
+  if (data.length > 0) {
+    const first = data[0];
+    const maxPoint = data.reduce((a, b) => (b.value > a.value ? b : a));
+    const minPoint = data.reduce((a, b) => (b.value < a.value ? b : a));
+    const direction = last.value > first.value ? "rising" : last.value < first.value ? "falling" : "flat";
+    summary = `${data.length} point${data.length === 1 ? "" : "s"}, round ${first.round} to round ${last.round}, ${direction} overall. Starts at ${formatY(first.value)}, ends at ${formatY(last.value)}. Minimum ${formatY(minPoint.value)} at round ${minPoint.round}, maximum ${formatY(maxPoint.value)} at round ${maxPoint.round}.`;
+  }
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
       <div className="flex items-baseline justify-between">
@@ -62,10 +76,14 @@ export default function MetricLineChart({
         )}
       </div>
 
+      <p className="sr-only" id={chartId}>
+        {title}. {summary}
+      </p>
+
       {data.length === 0 ? (
-        <p className="mt-6 text-sm text-gray-400">{emptyHint || "No rounds completed yet."}</p>
+        <p className="mt-6 text-sm text-gray-500">{emptyHint || "No rounds completed yet."}</p>
       ) : (
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mt-3 w-full" role="img" aria-label={title}>
+        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mt-3 w-full" role="img" aria-labelledby={chartId}>
           {yTicks.map((t) => (
             <g key={t}>
               <line
