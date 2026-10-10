@@ -13,6 +13,11 @@ const DEFAULT_CONFIG = {
   seed: 42,
   training_mode: "load_existing", // "load_existing" | "run_federated_training"
   target_client_id: null, // set on Phase 07's Client Selection page -- the client to unlearn
+  // Phase 14: which compute backend runs training/unlearning/evaluation.
+  // "auto" walks College GPU -> Colab -> Local -> Demo; a specific kind
+  // pins that backend and fails loudly if it's unavailable. This is a
+  // UI preference only -- no credential or endpoint ever lives here.
+  compute_backend: "auto", // "auto" | "college_gpu" | "colab" | "local" | "demo"
 };
 
 const EMPTY_STAGES = {
@@ -108,8 +113,9 @@ export function ExperimentProvider({ children }) {
   // field this config carries is overwritten from the artifact
   // summary, not merged, since the two experiments are unrelated.
   function loadExperiment(summary) {
-    setConfigState({
+    setConfigState((prev) => ({
       ...DEFAULT_CONFIG,
+      compute_backend: prev.compute_backend, // a backend choice is a session preference, not per-experiment
       experiment_id: summary.experiment_id,
       dataset: summary.dataset,
       num_clients: summary.num_clients ?? DEFAULT_CONFIG.num_clients,
@@ -119,7 +125,7 @@ export function ExperimentProvider({ children }) {
       seed: summary.seed ?? DEFAULT_CONFIG.seed,
       training_mode: "load_existing",
       target_client_id: summary.target_client_id ?? null,
-    });
+    }));
     // summary already carries a `stages` object (it came from the same
     // registry endpoint) -- seed it immediately instead of waiting on
     // a round trip, since loadExperiment is always immediately

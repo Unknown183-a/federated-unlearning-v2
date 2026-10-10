@@ -28,7 +28,37 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--batch-size", type=int, default=32)
+    # Phase 14: optional compute backend selection. Omitted (the
+    # default) behaves exactly as before this flag existed -- calls
+    # run_federated_training directly, no core.compute import at all.
+    parser.add_argument(
+        "--backend",
+        default=None,
+        help="Compute backend: college_gpu | colab | local | demo | auto. Default: run in-process, same as omitting this flag.",
+    )
     args = parser.parse_args(argv)
+
+    if args.backend is not None:
+        from core.compute.base import BackendUnavailableError, NotSupportedError
+        from core.compute.registry import call_with_fallback
+
+        try:
+            history, trace = call_with_fallback(
+                args.backend,
+                "run_federated_training",
+                experiment_id=args.experiment_id,
+                model_id=args.model,
+                rounds=args.rounds,
+                local_epochs=args.local_epochs,
+                seed=args.seed,
+                lr=args.lr,
+                batch_size=args.batch_size,
+            )
+        except (BackendUnavailableError, NotSupportedError, FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"history": history, "backend_trace": trace}))
+        return 0
 
     try:
         partition = load_partition(args.experiment_id)

@@ -20,7 +20,7 @@ const router = Router();
 // + API). Requires that /api/partition has already been run for this
 // experiment_id -- the training CLI loads that saved partition.
 router.post("/", (req, res) => {
-  const { experiment_id, model, federated_rounds, local_epochs, seed } = req.body || {};
+  const { experiment_id, model, federated_rounds, local_epochs, seed, backend } = req.body || {};
 
   if (!experiment_id || !model || !federated_rounds || !local_epochs || seed === undefined) {
     return res.status(400).json({
@@ -42,6 +42,11 @@ router.post("/", (req, res) => {
     "--seed",
     String(seed),
   ];
+  // Phase 14: optional compute backend selection (college_gpu | colab |
+  // local | demo | auto). Omitted -> identical to pre-Phase-14 behavior,
+  // run in-process; the CLI's output shape only changes when this flag
+  // is present (adds backend_trace alongside history).
+  if (backend !== undefined) args.push("--backend", String(backend));
 
   const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
 
@@ -60,7 +65,10 @@ router.post("/", (req, res) => {
       return res.status(400).json({ error: "Training failed", detail: stderr.trim() });
     }
     try {
-      res.status(200).json({ history: JSON.parse(stdout) });
+      const parsed = JSON.parse(stdout);
+      res
+        .status(200)
+        .json(backend !== undefined ? parsed : { history: parsed });
     } catch (err) {
       res.status(500).json({ error: "Could not parse training engine output", detail: stdout });
     }

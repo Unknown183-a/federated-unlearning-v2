@@ -34,6 +34,7 @@ router.post("/", (req, res) => {
     kd_temperature,
     kd_alpha,
     kd_batch_size,
+    backend,
   } = req.body || {};
 
   if (!experiment_id || client_id === undefined) {
@@ -58,6 +59,9 @@ router.post("/", (req, res) => {
   if (kd_temperature !== undefined) args.push("--kd-temperature", String(kd_temperature));
   if (kd_alpha !== undefined) args.push("--kd-alpha", String(kd_alpha));
   if (kd_batch_size !== undefined) args.push("--kd-batch-size", String(kd_batch_size));
+  // Phase 14: optional compute backend selection, see training.js for
+  // the same pattern -- omitted is byte-for-byte the pre-Phase-14 behavior.
+  if (backend !== undefined) args.push("--backend", String(backend));
 
   const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
 
@@ -76,7 +80,10 @@ router.post("/", (req, res) => {
       return res.status(400).json({ error: "Unlearning failed", detail: stderr.trim() });
     }
     try {
-      res.status(200).json({ status: JSON.parse(stdout) });
+      const parsed = JSON.parse(stdout);
+      res
+        .status(200)
+        .json(backend !== undefined ? parsed : { status: parsed });
     } catch (err) {
       res.status(500).json({ error: "Could not parse unlearning engine output", detail: stdout });
     }

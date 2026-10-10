@@ -22,7 +22,7 @@ const router = Router();
 // Spec, Ch.36). Requires that /api/unlearning has already completed
 // for this experiment_id (Phase 10 Depends On Phase 09).
 router.post("/", (req, res) => {
-  const { experiment_id, non_member_sample_size, device } = req.body || {};
+  const { experiment_id, non_member_sample_size, device, backend } = req.body || {};
 
   if (!experiment_id) {
     return res.status(400).json({ error: "experiment_id is required" });
@@ -33,6 +33,9 @@ router.post("/", (req, res) => {
     args.push("--non-member-sample-size", String(non_member_sample_size));
   }
   if (device !== undefined) args.push("--device", String(device));
+  // Phase 14: optional compute backend selection, see training.js for
+  // the same pattern -- omitted is byte-for-byte the pre-Phase-14 behavior.
+  if (backend !== undefined) args.push("--backend", String(backend));
 
   const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
 
@@ -51,7 +54,10 @@ router.post("/", (req, res) => {
       return res.status(400).json({ error: "Evaluation failed", detail: stderr.trim() });
     }
     try {
-      res.status(200).json({ results: JSON.parse(stdout) });
+      const parsed = JSON.parse(stdout);
+      res
+        .status(200)
+        .json(backend !== undefined ? parsed : { results: parsed });
     } catch (err) {
       res.status(500).json({ error: "Could not parse evaluation engine output", detail: stdout });
     }

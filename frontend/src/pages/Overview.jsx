@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
 import ModelLibraryCard from "../components/ModelLibraryCard.jsx";
+import ComputeBackendPanel from "../components/ComputeBackendPanel.jsx";
 
 // Page 1 -- Overview (Dashboard Spec Ch.1-2, Ch.32 Page 1, Phase 12).
 //
@@ -100,6 +101,8 @@ export default function Overview() {
           </button>
         </div>
       </div>
+
+      <ComputeBackendPanel />
 
       {showLibrary && (
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">

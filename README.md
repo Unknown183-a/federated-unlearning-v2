@@ -29,7 +29,7 @@ Implementation is in progress. See the Phase Index below for what's done and wha
 | 11 | [`phase-11-comparison-retraining/`](./phase-11-comparison-retraining/README.md) | Before/After, Full Retraining Baseline & Runtime Comparison | Not Started |
 | 12 | [`phase-12-quick-demo-model-library/`](./phase-12-quick-demo-model-library/README.md) | Quick Unlearning Demo & Model Library | Not Started |
 | 13 | [`phase-13-dashboard-ux/`](./phase-13-dashboard-ux/README.md) | Dashboard UX — Navigation, State & Visual Design System | Complete |
-| 14 | [`phase-14-compute-backend-architecture/`](./phase-14-compute-backend-architecture/README.md) | Backend Service Layer & Compute Backend Architecture | Not Started |
+| 14 | [`phase-14-compute-backend-architecture/`](./phase-14-compute-backend-architecture/README.md) | Backend Service Layer & Compute Backend Architecture | Complete |
 | 15 | [`phase-15-polish-launch/`](./phase-15-polish-launch/README.md) | Error Handling, Reproducibility, Professor Demo Mode & Launch | Not Started |
 
 ## Overall Progress
@@ -48,7 +48,7 @@ Implementation is in progress. See the Phase Index below for what's done and wha
 - [x] Phase 11 — Before/After, Retraining Baseline & Runtime Comparison
 - [x] Phase 12 — Quick Unlearning Demo & Model Library
 - [x] Phase 13 — Dashboard UX: Navigation, State & Visual Design
-- [ ] Phase 14 — Backend Service Layer & Compute Backend Architecture
+- [x] Phase 14 — Backend Service Layer & Compute Backend Architecture
 - [ ] Phase 15 — Error Handling, Reproducibility, Demo Mode & Launch
 
 ## Read the Architecture Document

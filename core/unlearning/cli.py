@@ -33,21 +33,42 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kd-temperature", type=float, default=4.0, help="KD softmax temperature")
     parser.add_argument("--kd-alpha", type=float, default=0.5, help="KD hard-label loss weight")
     parser.add_argument("--kd-batch-size", type=int, default=64, help="Knowledge Distillation batch size")
+    # Phase 14: optional compute backend selection. Omitted (the
+    # default) behaves exactly as before this flag existed.
+    parser.add_argument(
+        "--backend",
+        default=None,
+        help="Compute backend: college_gpu | colab | local | demo | auto. Default: run in-process, same as omitting this flag.",
+    )
     args = parser.parse_args(argv)
 
+    unlearning_kwargs = dict(
+        experiment_id=args.experiment_id,
+        client_id=args.client_id,
+        steps=args.steps,
+        lr=args.lr,
+        batch_size=args.batch_size,
+        kd_epochs=args.kd_epochs,
+        kd_lr=args.kd_lr,
+        kd_temperature=args.kd_temperature,
+        kd_alpha=args.kd_alpha,
+        kd_batch_size=args.kd_batch_size,
+    )
+
+    if args.backend is not None:
+        from core.compute.base import BackendUnavailableError, NotSupportedError
+        from core.compute.registry import call_with_fallback
+
+        try:
+            status, trace = call_with_fallback(args.backend, "start_unlearning", **unlearning_kwargs)
+        except (BackendUnavailableError, NotSupportedError, FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps({"status": status, "backend_trace": trace}))
+        return 0
+
     try:
-        status = start_unlearning(
-            experiment_id=args.experiment_id,
-            client_id=args.client_id,
-            steps=args.steps,
-            lr=args.lr,
-            batch_size=args.batch_size,
-            kd_epochs=args.kd_epochs,
-            kd_lr=args.kd_lr,
-            kd_temperature=args.kd_temperature,
-            kd_alpha=args.kd_alpha,
-            kd_batch_size=args.kd_batch_size,
-        )
+        status = start_unlearning(**unlearning_kwargs)
     except (FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

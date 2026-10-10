@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import BackendTraceNote from "../components/BackendTraceNote.jsx";
 import FedAvgDiagram from "../components/FedAvgDiagram.jsx";
 import RoundProgress from "../components/RoundProgress.jsx";
 import MetricLineChart from "../components/MetricLineChart.jsx";
@@ -31,6 +32,7 @@ function averageLocalLoss(round) {
 
 export default function FederatedLearning() {
   const { config, refreshStages } = useExperimentConfig();
+  const [backendTrace, setBackendTrace] = useState(null);
   const isLiveMode = config.training_mode === "run_federated_training";
 
   const [loadExperimentId, setLoadExperimentId] = useState(config.experiment_id);
@@ -145,6 +147,7 @@ export default function FederatedLearning() {
           federated_rounds: config.federated_rounds,
           local_epochs: config.local_epochs,
           seed: config.seed,
+          backend: config.compute_backend,
         }),
       });
       if (!res.ok) {
@@ -154,6 +157,7 @@ export default function FederatedLearning() {
       const data = await res.json();
       setResultKind("measured");
       setHistory(data.history);
+      setBackendTrace(data.backend_trace ?? null);
       setStatus("ready");
       refreshStages();
     } catch (err) {
@@ -327,6 +331,8 @@ export default function FederatedLearning() {
           {error}
         </p>
       )}
+
+      <BackendTraceNote trace={backendTrace} />
 
       {history && (
         <>

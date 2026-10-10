@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import BackendTraceNote from "../components/BackendTraceNote.jsx";
 import EvaluationMetrics from "../components/EvaluationMetrics.jsx";
 
 // Page 7 -- Evaluation (Dashboard Spec Ch.21-22, Ch.32 Page 7, Phase 10).
@@ -13,6 +14,7 @@ import EvaluationMetrics from "../components/EvaluationMetrics.jsx";
 
 export default function Evaluation() {
   const { config, refreshStages } = useExperimentConfig();
+  const [backendTrace, setBackendTrace] = useState(null);
 
   const [gateStatus, setGateStatus] = useState("loading"); // loading | ready | missing
   const [runStatus, setRunStatus] = useState("idle"); // idle | loading | error | ready
@@ -68,7 +70,7 @@ export default function Evaluation() {
       const res = await fetch("/api/evaluation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ experiment_id: config.experiment_id }),
+        body: JSON.stringify({ experiment_id: config.experiment_id, backend: config.compute_backend }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -77,6 +79,7 @@ export default function Evaluation() {
       const data = await res.json();
       setResultKind("measured");
       setResults(data.results);
+      setBackendTrace(data.backend_trace ?? null);
       setRunStatus("ready");
       refreshStages();
     } catch (err) {
@@ -146,6 +149,8 @@ export default function Evaluation() {
           {error}
         </p>
       )}
+
+      <BackendTraceNote trace={backendTrace} />
 
       {results && (
         <EvaluationMetrics before={results.before} after={results.after} runtime={results.runtime} />

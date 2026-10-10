@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import BackendTraceNote from "../components/BackendTraceNote.jsx";
 import UnlearningStepper from "../components/UnlearningStepper.jsx";
 import GradientAscentPanel from "../components/GradientAscentPanel.jsx";
 import KnowledgeDistillationPanel from "../components/KnowledgeDistillationPanel.jsx";
@@ -20,6 +21,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function Unlearning() {
   const { config, refreshStages } = useExperimentConfig();
+  const [backendTrace, setBackendTrace] = useState(null);
 
   const [gateStatus, setGateStatus] = useState("loading"); // loading | ready | missing
   const [runStatus, setRunStatus] = useState("idle"); // idle | loading | error | ready
@@ -85,6 +87,7 @@ export default function Unlearning() {
         body: JSON.stringify({
           experiment_id: config.experiment_id,
           client_id: config.target_client_id,
+          backend: config.compute_backend,
         }),
       });
       if (!res.ok) {
@@ -94,6 +97,7 @@ export default function Unlearning() {
       const data = await res.json();
       setResultKind("measured");
       setResult(data.status);
+      setBackendTrace(data.backend_trace ?? null);
       setRunStatus("ready");
       refreshStages();
     } catch (err) {
@@ -236,6 +240,8 @@ export default function Unlearning() {
           {error}
         </p>
       )}
+
+      <BackendTraceNote trace={backendTrace} />
 
       {result && (
         <>
