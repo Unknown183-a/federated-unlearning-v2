@@ -57,5 +57,5 @@ Default timeout is 2 seconds so an unreachable host can't stall the status panel
 ## Not covered
 
 * Retraining-baseline execution (Phase 11) is not routed through compute backends; it still runs in-process.
-* The two remote backends are tested against a real local HTTP server speaking the protocol above, not against an
-  actual college or Colab machine; no such server ships in this repo.
+* The remote server (`core/compute/server.py`, see [`REMOTE_COMPUTE_SETUP.md`](./REMOTE_COMPUTE_SETUP.md)) is tested
+  over real HTTP with a stub backend. It has not been run on an actual college GPU or Colab session by the test suite.
