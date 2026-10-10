@@ -36,6 +36,7 @@ from core.evaluation.storage import (
 from core.federated.server import fedavg_train
 from core.federated.storage import load_fl_history
 from core.partitioning.storage import load_partition
+from core.provenance import software_info
 from core.unlearning.storage import load_unlearning_status
 
 #: Optimizer defaults core.federated.cli applies when the caller doesn't
@@ -174,6 +175,8 @@ def run_retraining_baseline(experiment_id: str, device: str = "cpu") -> dict:
             }
             for r in retrain_history["round_history"]
         ],
+        # Phase 15 (Spec Ch.44): which code produced these numbers.
+        "software": software_info(),
         "status": "complete",
     }
     save_retraining_results(experiment_id, results)

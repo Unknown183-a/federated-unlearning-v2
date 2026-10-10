@@ -25,6 +25,7 @@ from core.evaluation.accuracy import (
 )
 from core.evaluation.mia import run_membership_inference
 from core.evaluation.storage import save_evaluation_results
+from core.provenance import software_info
 from core.federated.storage import load_model_checkpoint
 from core.partitioning.storage import load_partition
 from core.unlearning.storage import load_final_checkpoint, load_unlearning_status
@@ -150,6 +151,8 @@ def evaluate_experiment(
 
     ga_summary = status.get("gradient_ascent") or {}
     kd_summary = status.get("knowledge_distillation") or {}
+    # Phase 15 (Spec Ch.44): which code produced these numbers.
+    results["software"] = software_info()
     results["runtime"] = {
         "gradient_ascent_seconds": ga_summary.get("duration_seconds"),
         "knowledge_distillation_seconds": kd_summary.get("duration_seconds"),

@@ -1,16 +1,7 @@
 import { Router } from "express";
-import { spawn } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// backend/src/routes/ -> repo root
-const REPO_ROOT = join(__dirname, "..", "..", "..");
-
-function partitionPath(experimentId) {
-  return join(REPO_ROOT, "experiments", experimentId, "partition.json");
-}
+import { readArtifact, isValidExperimentId, validateExperimentIdParam } from "../artifacts.js";
+import { runEngine } from "../runEngine.js";
+import { sendCorruptArtifact, sendInvalidRequest, sendNotFound } from "../errors.js";
 
 function summarize(partition) {
   const samples = partition.clients.map((c) => c.num_samples);
@@ -40,6 +31,7 @@ function summarize(partition) {
 }
 
 const router = Router();
+router.param("experimentId", validateExperimentIdParam);
 
 // POST /api/partition -> run core/partitioning (Python) for this config,
 // persist the full partition to experiments/<id>/partition.json, and
@@ -48,10 +40,13 @@ router.post("/", (req, res) => {
   const { dataset, num_clients, partition_strategy, seed, experiment_id } = req.body || {};
 
   if (!dataset || !num_clients || !partition_strategy || seed === undefined || !experiment_id) {
-    return res.status(400).json({
-      error:
-        "dataset, num_clients, partition_strategy, seed, and experiment_id are all required",
-    });
+    return sendInvalidRequest(
+      res,
+      "dataset, num_clients, partition_strategy, seed, and experiment_id are all required"
+    );
+  }
+  if (!isValidExperimentId(String(experiment_id))) {
+    return sendInvalidRequest(res, "That experiment id is not valid.");
   }
 
   const args = [
@@ -69,41 +64,29 @@ router.post("/", (req, res) => {
     String(experiment_id),
   ];
 
-  const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
-
-  let stdout = "";
-  let stderr = "";
-  py.stdout.on("data", (chunk) => (stdout += chunk));
-  py.stderr.on("data", (chunk) => (stderr += chunk));
-
-  py.on("error", (err) => {
-    res.status(500).json({ error: "Could not start the partitioning engine", detail: err.message });
-  });
-
-  py.on("close", (code) => {
-    if (res.headersSent) return;
-    if (code !== 0) {
-      return res.status(400).json({ error: "Partitioning failed", detail: stderr.trim() });
-    }
-    try {
-      res.status(200).json({ partition: JSON.parse(stdout) });
-    } catch (err) {
-      res.status(500).json({ error: "Could not parse partitioner output", detail: stdout });
-    }
+  runEngine({
+    args,
+    stage: "partition",
+    res,
+    experimentId: String(experiment_id),
+    onSuccess: (parsed) => res.status(200).json({ partition: parsed }),
   });
 });
 
 // GET /api/partition/:experimentId -> re-read a previously computed
 // partition's summary without re-running the engine.
 router.get("/:experimentId", (req, res) => {
-  const path = partitionPath(req.params.experimentId);
-  if (!existsSync(path)) {
-    return res
-      .status(404)
-      .json({ error: `No partition found for experiment "${req.params.experimentId}"` });
+  const { experimentId } = req.params;
+  const artifact = readArtifact(experimentId, "partition.json");
+  if (artifact.state === "missing") {
+    return sendNotFound(
+      res,
+      `No partition found for experiment "${experimentId}"`,
+      "PARTITION_UNAVAILABLE"
+    );
   }
-  const partition = JSON.parse(readFileSync(path, "utf-8"));
-  res.status(200).json({ partition: summarize(partition) });
+  if (artifact.state === "corrupt") return sendCorruptArtifact(res, "partition", experimentId);
+  res.status(200).json({ partition: summarize(artifact.data) });
 });
 
 export default router;

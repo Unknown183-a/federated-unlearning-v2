@@ -26,6 +26,7 @@ import time
 from core.datasets.base import get_dataset
 from core.federated.storage import load_fl_history, load_model_checkpoint
 from core.partitioning.storage import load_partition
+from core.provenance import software_info
 from core.unlearning.gradient_ascent import run_gradient_ascent
 from core.unlearning.knowledge_distillation import run_knowledge_distillation
 from core.unlearning.storage import (
@@ -84,6 +85,22 @@ def start_unlearning(
         "dataset": history["dataset"],
         "stage": "gradient_ascent",
         "status": "running",
+        # Phase 15 (Spec Ch.44): record exactly how this run was
+        # configured and which code ran it, so the result can be
+        # reproduced. Written up front so even a failed run keeps it.
+        "method": "gradient_ascent+knowledge_distillation",
+        "hyperparameters": {
+            "gradient_ascent": {"steps": steps, "lr": lr, "batch_size": batch_size},
+            "knowledge_distillation": {
+                "epochs": kd_epochs,
+                "lr": kd_lr,
+                "temperature": kd_temperature,
+                "alpha": kd_alpha,
+                "batch_size": kd_batch_size,
+            },
+        },
+        "seed": history.get("seed"),
+        "software": software_info(),
     }
     save_unlearning_status(experiment_id, status)
 

@@ -78,6 +78,13 @@ export default function ComputeBackendPanel() {
         </button>
       </div>
 
+      {status?.degraded && (
+        <p role="status" className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Live backends could not be checked ({status.degraded_reason}). Stored experiments can still be replayed; new
+          live runs are unavailable until this is fixed.
+        </p>
+      )}
+
       <fieldset className="mt-4">
         <legend className="sr-only">Compute backend</legend>
         <div className="flex flex-wrap gap-2">

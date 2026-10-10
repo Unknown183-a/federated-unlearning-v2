@@ -32,6 +32,22 @@ function generateExperimentId() {
   return `exp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Phase 15: "research" is the full lab (can train, run, tweak);
+// "demo" is Professor Demo Mode -- replays a stored experiment and
+// never starts a long computation (Dashboard Spec Ch.37 / Ch.71.12).
+// Kept in sessionStorage so a page reload mid-presentation does not
+// silently drop back to Research Mode. Storage can be blocked, so every
+// access is guarded.
+const MODE_KEY = "fu-lab-app-mode";
+
+function readStoredMode() {
+  try {
+    return window.sessionStorage.getItem(MODE_KEY) === "demo" ? "demo" : "research";
+  } catch {
+    return "research";
+  }
+}
+
 const ExperimentContext = createContext(null);
 
 export function ExperimentProvider({ children }) {
@@ -49,6 +65,17 @@ export function ExperimentProvider({ children }) {
   // about what stage the experiment is at ("consolidate page state
   // into one central store"). This is read-only progress, not
   // editable config, so it lives alongside `config` rather than in it.
+  const [appMode, setAppModeState] = useState(readStoredMode);
+  const setAppMode = useCallback((mode) => {
+    const next = mode === "demo" ? "demo" : "research";
+    setAppModeState(next);
+    try {
+      window.sessionStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* storage blocked -- the mode still works for this page load */
+    }
+  }, []);
+
   const [stages, setStages] = useState(EMPTY_STAGES);
   const [stagesStatus, setStagesStatus] = useState("idle"); // idle | loading | ready
 
@@ -135,7 +162,7 @@ export function ExperimentProvider({ children }) {
 
   return (
     <ExperimentContext.Provider
-      value={{ config, updateConfig, loadExperiment, stages, stagesStatus, refreshStages }}
+      value={{ config, updateConfig, loadExperiment, stages, stagesStatus, refreshStages, appMode, setAppMode }}
     >
       {children}
     </ExperimentContext.Provider>

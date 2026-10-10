@@ -1,18 +1,10 @@
 import { Router } from "express";
-import { spawn } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// backend/src/routes/ -> repo root
-const REPO_ROOT = join(__dirname, "..", "..", "..");
-
-function statusPath(experimentId) {
-  return join(REPO_ROOT, "experiments", experimentId, "unlearning_status.json");
-}
+import { readArtifact, isValidExperimentId, validateExperimentIdParam } from "../artifacts.js";
+import { runEngine } from "../runEngine.js";
+import { sendCorruptArtifact, sendInvalidRequest, sendNotFound } from "../errors.js";
 
 const router = Router();
+router.param("experimentId", validateExperimentIdParam);
 
 // POST /api/unlearning -> run core/unlearning (Python) Gradient Ascent
 // followed by Knowledge Distillation for this experiment/target
@@ -22,6 +14,10 @@ const router = Router();
 // start_unlearning(client_id) from the Dashboard Spec (Ch.71.8).
 // Requires that /api/partition and /api/training have already been
 // run for this experiment_id.
+//
+// Phase 15: a failure reports WHICH stage failed ("Gradient Ascent" or
+// "Knowledge Distillation") using what the engine persisted, plus the
+// technical error and a retry hint (Dashboard Spec Ch.43).
 router.post("/", (req, res) => {
   const {
     experiment_id,
@@ -37,10 +33,11 @@ router.post("/", (req, res) => {
     backend,
   } = req.body || {};
 
-  if (!experiment_id || client_id === undefined) {
-    return res.status(400).json({
-      error: "experiment_id and client_id are required",
-    });
+  if (!experiment_id || client_id === undefined || client_id === null) {
+    return sendInvalidRequest(res, "experiment_id and client_id are required");
+  }
+  if (!isValidExperimentId(String(experiment_id))) {
+    return sendInvalidRequest(res, "That experiment id is not valid.");
   }
 
   const args = [
@@ -63,30 +60,12 @@ router.post("/", (req, res) => {
   // the same pattern -- omitted is byte-for-byte the pre-Phase-14 behavior.
   if (backend !== undefined) args.push("--backend", String(backend));
 
-  const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
-
-  let stdout = "";
-  let stderr = "";
-  py.stdout.on("data", (chunk) => (stdout += chunk));
-  py.stderr.on("data", (chunk) => (stderr += chunk));
-
-  py.on("error", (err) => {
-    res.status(500).json({ error: "Could not start the unlearning engine", detail: err.message });
-  });
-
-  py.on("close", (code) => {
-    if (res.headersSent) return;
-    if (code !== 0) {
-      return res.status(400).json({ error: "Unlearning failed", detail: stderr.trim() });
-    }
-    try {
-      const parsed = JSON.parse(stdout);
-      res
-        .status(200)
-        .json(backend !== undefined ? parsed : { status: parsed });
-    } catch (err) {
-      res.status(500).json({ error: "Could not parse unlearning engine output", detail: stdout });
-    }
+  runEngine({
+    args,
+    stage: "unlearning",
+    res,
+    experimentId: String(experiment_id),
+    onSuccess: (parsed) => res.status(200).json(backend !== undefined ? parsed : { status: parsed }),
   });
 });
 
@@ -94,14 +73,13 @@ router.post("/", (req, res) => {
 // persisted unlearning status without re-running anything
 // (get_unlearning_status()).
 router.get("/:experimentId", (req, res) => {
-  const path = statusPath(req.params.experimentId);
-  if (!existsSync(path)) {
-    return res
-      .status(404)
-      .json({ error: `No unlearning status found for experiment "${req.params.experimentId}"` });
+  const { experimentId } = req.params;
+  const artifact = readArtifact(experimentId, "unlearning_status.json");
+  if (artifact.state === "missing") {
+    return sendNotFound(res, `No unlearning status found for experiment "${experimentId}"`);
   }
-  const status = JSON.parse(readFileSync(path, "utf-8"));
-  res.status(200).json({ status });
+  if (artifact.state === "corrupt") return sendCorruptArtifact(res, "unlearning status", experimentId);
+  res.status(200).json({ status: artifact.data });
 });
 
 export default router;

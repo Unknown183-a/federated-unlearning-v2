@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import { ApiError, apiFetch } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
+import ProvenanceBadge from "../components/ProvenanceBadge.jsx";
+import ExperimentConfigPanel from "../components/ExperimentConfigPanel.jsx";
+import DemoReplayNote from "../components/DemoReplayNote.jsx";
 import BackendTraceNote from "../components/BackendTraceNote.jsx";
 import FedAvgDiagram from "../components/FedAvgDiagram.jsx";
 import RoundProgress from "../components/RoundProgress.jsx";
@@ -31,9 +36,11 @@ function averageLocalLoss(round) {
 }
 
 export default function FederatedLearning() {
-  const { config, refreshStages } = useExperimentConfig();
+  const { config, refreshStages, appMode } = useExperimentConfig();
+  const demo = appMode === "demo";
   const [backendTrace, setBackendTrace] = useState(null);
-  const isLiveMode = config.training_mode === "run_federated_training";
+  // Professor Demo Mode never trains (Spec Ch.37) -- it replays the stored run.
+  const isLiveMode = !demo && config.training_mode === "run_federated_training";
 
   const [loadExperimentId, setLoadExperimentId] = useState(config.experiment_id);
   const [partitionReady, setPartitionReady] = useState(null); // null = unknown
@@ -133,12 +140,19 @@ export default function FederatedLearning() {
     };
   }, [history]);
 
+  // Professor Demo Mode: replay this experiment's stored training
+  // automatically -- there is no "Run" button to press.
+  useEffect(() => {
+    if (demo && config.experiment_id) loadStoredExperiment(config.experiment_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demo, config.experiment_id]);
+
   async function runLiveTraining() {
     setStatus("loading");
     setError(null);
     setHistory(null);
     try {
-      const res = await fetch("/api/training", {
+      const data = await apiFetch("/api/training", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,26 +164,21 @@ export default function FederatedLearning() {
           backend: config.compute_backend,
         }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Request failed: ${res.status}`);
-      }
-      const data = await res.json();
       setResultKind("measured");
       setHistory(data.history);
       setBackendTrace(data.backend_trace ?? null);
       setStatus("ready");
       refreshStages();
     } catch (err) {
-      setError(err.message);
+      setError(err);
       setStatus("error");
     }
   }
 
-  async function loadStoredExperiment() {
-    const id = loadExperimentId.trim();
+  async function loadStoredExperiment(idOverride) {
+    const id = (typeof idOverride === "string" ? idOverride : loadExperimentId).trim();
     if (!id) {
-      setError("Enter an experiment ID to load.");
+      setError(new ApiError({ message: "Enter an experiment ID to load.", code: "INVALID_REQUEST", retryable: false }));
       setStatus("error");
       return;
     }
@@ -177,17 +186,12 @@ export default function FederatedLearning() {
     setError(null);
     setHistory(null);
     try {
-      const res = await fetch(`/api/training/${encodeURIComponent(id)}`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Request failed: ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await apiFetch(`/api/training/${encodeURIComponent(id)}`);
       setResultKind("precomputed");
       setHistory(data.history);
       setStatus("ready");
     } catch (err) {
-      setError(err.message);
+      setError(err);
       setStatus("error");
     }
   }
@@ -234,15 +238,7 @@ export default function FederatedLearning() {
             model improves round by round.
           </p>
         </div>
-        {resultKind && (
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-              resultKind === "measured" ? "bg-indigo-100 text-indigo-800" : "bg-amber-100 text-amber-800"
-            }`}
-          >
-            {resultKind === "measured" ? "Measured" : "Stored Experiment"}
-          </span>
-        )}
+        {resultKind && <ProvenanceBadge kind={resultKind} className="shrink-0" />}
       </div>
 
       {!config.dataset && (
@@ -251,7 +247,9 @@ export default function FederatedLearning() {
         </p>
       )}
 
-      {isLiveMode ? (
+      {demo ? (
+        <DemoReplayNote stage="training" hasResult={!!history} />
+      ) : isLiveMode ? (
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-gray-700">
             Run federated training for experiment{" "}
@@ -326,11 +324,7 @@ export default function FederatedLearning() {
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      <ErrorPanel error={error} onRetry={isLiveMode ? runLiveTraining : () => loadStoredExperiment()} />
 
       <BackendTraceNote trace={backendTrace} />
 
@@ -429,6 +423,8 @@ export default function FederatedLearning() {
           </div>
         </>
       )}
+
+      <ExperimentConfigPanel experimentId={config.experiment_id} />
     </section>
   );
 }

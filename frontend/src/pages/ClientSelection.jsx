@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
 import GlobalModelSummary from "../components/GlobalModelSummary.jsx";
 import ClientCardGrid from "../components/ClientCardGrid.jsx";
+import { ApiError, errorFromResponse } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
+import ProvenanceBadge from "../components/ProvenanceBadge.jsx";
+import ExperimentConfigPanel from "../components/ExperimentConfigPanel.jsx";
 
 // Page 5 -- Global Model & Target Client Selection (Dashboard Spec Ch.11).
 //
@@ -12,6 +16,7 @@ import ClientCardGrid from "../components/ClientCardGrid.jsx";
 // it just re-reads them (GET, not POST) rather than re-running anything.
 export default function ClientSelection() {
   const { config, updateConfig } = useExperimentConfig();
+  const navigate = useNavigate();
   const [history, setHistory] = useState(null);
   const [partition, setPartition] = useState(null);
   const [status, setStatus] = useState("loading"); // loading | ready | missing | error
@@ -29,6 +34,17 @@ export default function ClientSelection() {
     ])
       .then(async ([trainingRes, partitionRes]) => {
         if (ignore) return;
+        // 404 = nothing stored yet. Anything else (corrupt file, server
+        // trouble) is a real failure and is shown as one.
+        const failed = [trainingRes, partitionRes].find((r) => !r.ok && r.status !== 404);
+        if (failed) {
+          const failure = await errorFromResponse(failed);
+          if (!ignore) {
+            setError(failure);
+            setStatus("error");
+          }
+          return;
+        }
         if (!trainingRes.ok || !partitionRes.ok) {
           setStatus("missing");
           return;
@@ -41,7 +57,7 @@ export default function ClientSelection() {
       })
       .catch((err) => {
         if (ignore) return;
-        setError(err.message);
+        setError(err);
         setStatus("error");
       });
 
@@ -52,30 +68,29 @@ export default function ClientSelection() {
 
   return (
     <section className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Client Selection</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Review the trained global model, then pick which client's data it should forget.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Client Selection</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Review the trained global model, then pick which client's data it should forget.
+          </p>
+        </div>
+        {status === "ready" && <ProvenanceBadge kind="precomputed" className="shrink-0" />}
       </div>
 
       {status === "loading" && <p className="text-sm text-gray-500">Loading global model…</p>}
 
       {status === "missing" && (
-        <p role="alert" className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          No trained model found for this experiment yet — run training on{" "}
-          <Link to="/training" className="font-medium underline">
-            Federated Learning
-          </Link>{" "}
-          first.
-        </p>
+        <ErrorPanel
+          error={new ApiError({
+            message: "No trained checkpoint exists for this configuration.",
+            code: "MODEL_UNAVAILABLE",
+            retryable: false,
+          })}
+        />
       )}
 
-      {status === "error" && (
-        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          Could not load this experiment: {error}
-        </p>
-      )}
+      {status === "error" && <ErrorPanel error={error} />}
 
       {status === "ready" && history && (
         <>
@@ -90,19 +105,30 @@ export default function ClientSelection() {
           />
 
           {config.target_client_id !== null && config.target_client_id !== undefined ? (
-            <p className="text-sm text-gray-700">
-              Client <strong className="font-semibold">{config.target_client_id}</strong> is set as the
-              target for unlearning. Continue to{" "}
-              <Link to="/unlearning" className="font-medium text-indigo-600 underline">
-                Unlearning
-              </Link>
-              .
-            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <p className="text-sm text-gray-700">
+                Client <strong className="font-semibold">{config.target_client_id}</strong> is set as the
+                target for unlearning.
+              </p>
+              {/* Dashboard Spec Ch.70: "Remove Influence button available".
+                  It opens the Unlearning step for this client; the run
+                  itself still starts there, so nothing is removed by
+                  just clicking a client card. */}
+              <button
+                type="button"
+                onClick={() => navigate("/unlearning")}
+                className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+              >
+                Remove Influence of Client {config.target_client_id} →
+              </button>
+            </div>
           ) : (
             <p className="text-sm text-gray-500">Select a client card above to set it as the unlearning target.</p>
           )}
         </>
       )}
+
+      <ExperimentConfigPanel experimentId={config.experiment_id} />
     </section>
   );
 }

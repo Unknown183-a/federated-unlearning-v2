@@ -1,18 +1,15 @@
 import { Router } from "express";
-import { spawn } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// backend/src/routes/ -> repo root
-const REPO_ROOT = join(__dirname, "..", "..", "..");
-
-function resultsPath(experimentId) {
-  return join(REPO_ROOT, "experiments", experimentId, "evaluation_results.json");
-}
+import { readArtifact, isValidExperimentId, validateExperimentIdParam } from "../artifacts.js";
+import { runEngine } from "../runEngine.js";
+import {
+  sendCorruptArtifact,
+  sendIncompleteArtifact,
+  sendInvalidRequest,
+  sendNotFound,
+} from "../errors.js";
 
 const router = Router();
+router.param("experimentId", validateExperimentIdParam);
 
 // POST /api/evaluation -> run core/evaluation (Python): global/forget-
 // client/retained-client accuracy, MIA, and runtime, each measured
@@ -25,7 +22,10 @@ router.post("/", (req, res) => {
   const { experiment_id, non_member_sample_size, device, backend } = req.body || {};
 
   if (!experiment_id) {
-    return res.status(400).json({ error: "experiment_id is required" });
+    return sendInvalidRequest(res, "experiment_id is required");
+  }
+  if (!isValidExperimentId(String(experiment_id))) {
+    return sendInvalidRequest(res, "That experiment id is not valid.");
   }
 
   const args = ["-m", "core.evaluation.cli", "--experiment-id", String(experiment_id)];
@@ -37,44 +37,33 @@ router.post("/", (req, res) => {
   // the same pattern -- omitted is byte-for-byte the pre-Phase-14 behavior.
   if (backend !== undefined) args.push("--backend", String(backend));
 
-  const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
-
-  let stdout = "";
-  let stderr = "";
-  py.stdout.on("data", (chunk) => (stdout += chunk));
-  py.stderr.on("data", (chunk) => (stderr += chunk));
-
-  py.on("error", (err) => {
-    res.status(500).json({ error: "Could not start the evaluation engine", detail: err.message });
-  });
-
-  py.on("close", (code) => {
-    if (res.headersSent) return;
-    if (code !== 0) {
-      return res.status(400).json({ error: "Evaluation failed", detail: stderr.trim() });
-    }
-    try {
-      const parsed = JSON.parse(stdout);
-      res
-        .status(200)
-        .json(backend !== undefined ? parsed : { results: parsed });
-    } catch (err) {
-      res.status(500).json({ error: "Could not parse evaluation engine output", detail: stdout });
-    }
+  runEngine({
+    args,
+    stage: "evaluation",
+    res,
+    experimentId: String(experiment_id),
+    onSuccess: (parsed) => res.status(200).json(backend !== undefined ? parsed : { results: parsed }),
   });
 });
 
 // GET /api/evaluation/:experimentId -> re-read the most recently
 // persisted evaluation results without re-running anything.
+//
+// Phase 15 (Spec Ch.43, "Evaluation failure: do not show incomplete
+// metrics as valid final results"): a results file whose status is not
+// "complete" is refused with a 409 rather than served as if it were a
+// real result.
 router.get("/:experimentId", (req, res) => {
-  const path = resultsPath(req.params.experimentId);
-  if (!existsSync(path)) {
-    return res
-      .status(404)
-      .json({ error: `No evaluation results found for experiment "${req.params.experimentId}"` });
+  const { experimentId } = req.params;
+  const artifact = readArtifact(experimentId, "evaluation_results.json");
+  if (artifact.state === "missing") {
+    return sendNotFound(res, `No evaluation results found for experiment "${experimentId}"`);
   }
-  const results = JSON.parse(readFileSync(path, "utf-8"));
-  res.status(200).json({ results });
+  if (artifact.state === "corrupt") return sendCorruptArtifact(res, "evaluation results", experimentId);
+  if (artifact.data.status !== "complete") {
+    return sendIncompleteArtifact(res, "evaluation results", experimentId, artifact.data.status);
+  }
+  res.status(200).json({ results: artifact.data });
 });
 
 export default router;

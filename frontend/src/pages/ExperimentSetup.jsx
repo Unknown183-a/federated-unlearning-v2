@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import DatasetCard from "../components/DatasetCard.jsx";
 import ExperimentConfigForm from "../components/ExperimentConfigForm.jsx";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import { apiFetch } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
 
 export default function ExperimentSetup() {
   const [datasets, setDatasets] = useState([]);
@@ -9,13 +11,9 @@ export default function ExperimentSetup() {
   const { config, updateConfig } = useExperimentConfig();
 
   useEffect(() => {
-    fetch("/api/datasets")
-      .then((res) => {
-        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-        return res.json();
-      })
+    apiFetch("/api/datasets")
       .then((data) => setDatasets(data.datasets))
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err));
   }, []);
 
   return (
@@ -24,11 +22,7 @@ export default function ExperimentSetup() {
 
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-900">Choose a dataset</h2>
-        {error && (
-          <p role="alert" className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            Could not load datasets: {error}
-          </p>
-        )}
+        <ErrorPanel className="mt-2" error={error} onRetry={() => window.location.reload()} />
         <div className="mt-4 flex flex-wrap gap-4">
           {datasets.map((dataset) => (
             <DatasetCard

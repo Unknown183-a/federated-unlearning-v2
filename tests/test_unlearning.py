@@ -411,6 +411,22 @@ def test_start_unlearning_full_pipeline_synthetic(tmp_path, monkeypatch):
     assert status["stage"] == "knowledge_distillation"
     assert status["target_client_id"] == 1
 
+    # Phase 15 (Spec Ch.44): the run records how it was configured and
+    # which code ran it, so the result can be reproduced.
+    assert status["method"] == "gradient_ascent+knowledge_distillation"
+    assert status["seed"] == 3
+    assert status["hyperparameters"] == {
+        "gradient_ascent": {"steps": 8, "lr": 0.5, "batch_size": 8},
+        "knowledge_distillation": {
+            "epochs": 3,
+            "lr": 0.05,
+            "temperature": 4.0,
+            "alpha": 0.5,
+            "batch_size": 16,
+        },
+    }
+    assert status["software"]["project_version"]
+
     ga = status["gradient_ascent"]
     assert ga["status"] == "complete"
     assert ga["final_loss"] > ga["initial_loss"]

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { conciseDetail } from "../errors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // backend/src/routes/ -> repo root
@@ -26,21 +27,54 @@ router.get("/status", (req, res) => {
   py.stdout.on("data", (chunk) => (stdout += chunk));
   py.stderr.on("data", (chunk) => (stderr += chunk));
 
+  // A status check must never hang the page: if the probe has not
+  // answered in 15s (e.g. an unreachable remote backend and a slow
+  // network), fall through to the stored-experiment fallback below.
+  const timer = setTimeout(() => py.kill("SIGKILL"), 15000);
+
   py.on("error", (err) => {
-    res.status(500).json({ error: "Could not start the compute status check", detail: err.message });
+    clearTimeout(timer);
+    respondDegraded(res, `Could not start the compute status check (${err.message}).`);
   });
 
   py.on("close", (code) => {
+    clearTimeout(timer);
     if (res.headersSent) return;
     if (code !== 0) {
-      return res.status(500).json({ error: "Compute status check failed", detail: stderr.trim() });
+      return respondDegraded(res, `The compute status check failed: ${conciseDetail(stderr) || `exit ${code}`}`);
     }
     try {
       res.status(200).json(JSON.parse(stdout));
-    } catch (err) {
-      res.status(500).json({ error: "Could not parse compute status output", detail: stdout });
+    } catch {
+      respondDegraded(res, "The compute status check returned an unreadable response.");
     }
   });
 });
+
+// Phase 15 (Spec Ch.71.12: "The presentation must remain functional even
+// when no remote GPU is reachable"). If the Python status probe itself
+// cannot run, the dashboard still works for every STORED experiment --
+// those are read as JSON directly by the Express routes, with no Python
+// involved. So instead of a 500, say exactly that, and flag the response
+// as degraded so the UI shows it. Nothing here pretends a live backend
+// is available: only the Demo (Precomputed) backend is listed.
+function respondDegraded(res, reason) {
+  if (res.headersSent) return;
+  const demo = {
+    backend: "demo",
+    name: "Demo (Precomputed)",
+    available: true,
+    detail: "Stored experiments can still be replayed. New live runs are unavailable.",
+    device: null,
+    latency_ms: null,
+  };
+  res.status(200).json({
+    degraded: true,
+    degraded_reason: reason,
+    backends: [demo],
+    auto_selected: "demo",
+    auto_trace: [demo],
+  });
+}
 
 export default router;

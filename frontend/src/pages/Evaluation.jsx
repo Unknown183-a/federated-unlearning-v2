@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import { ApiError, apiFetch, errorFromResponse, isCompleteEvaluation } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
+import ProvenanceBadge from "../components/ProvenanceBadge.jsx";
+import ExperimentConfigPanel from "../components/ExperimentConfigPanel.jsx";
+import DemoReplayNote from "../components/DemoReplayNote.jsx";
 import BackendTraceNote from "../components/BackendTraceNote.jsx";
 import EvaluationMetrics from "../components/EvaluationMetrics.jsx";
 
@@ -13,7 +18,8 @@ import EvaluationMetrics from "../components/EvaluationMetrics.jsx";
 // (real, non-trivial) accuracy/MIA computation on every page visit.
 
 export default function Evaluation() {
-  const { config, refreshStages } = useExperimentConfig();
+  const { config, refreshStages, appMode } = useExperimentConfig();
+  const demo = appMode === "demo";
   const [backendTrace, setBackendTrace] = useState(null);
 
   const [gateStatus, setGateStatus] = useState("loading"); // loading | ready | missing
@@ -48,9 +54,18 @@ export default function Evaluation() {
     let ignore = false;
     fetch(`/api/evaluation/${encodeURIComponent(config.experiment_id)}`)
       .then(async (res) => {
-        if (ignore || !res.ok) return;
+        if (ignore) return;
+        if (!res.ok) {
+          // 404/400 just mean "nothing stored yet"; anything else
+          // (corrupt or incomplete artifact) is shown, not hidden.
+          if (res.status !== 404 && res.status !== 400) {
+            const failure = await errorFromResponse(res);
+            if (!ignore) setError(failure);
+          }
+          return;
+        }
         const data = await res.json();
-        if (data.results && data.results.status === "complete") {
+        if (isCompleteEvaluation(data.results)) {
           setResultKind("stored");
           setResults(data.results);
           setRunStatus("ready");
@@ -67,23 +82,27 @@ export default function Evaluation() {
     setError(null);
     setResults(null);
     try {
-      const res = await fetch("/api/evaluation", {
+      const data = await apiFetch("/api/evaluation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ experiment_id: config.experiment_id, backend: config.compute_backend }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Request failed: ${res.status}`);
+      // Never draw a half-finished result as if it were final (Ch.43).
+      if (!isCompleteEvaluation(data.results)) {
+        throw new ApiError({
+          message: "The evaluation returned incomplete metrics, so no results are shown.",
+          code: "EVALUATION_FAILED",
+          stage: "Evaluation",
+          retryable: true,
+        });
       }
-      const data = await res.json();
       setResultKind("measured");
       setResults(data.results);
       setBackendTrace(data.backend_trace ?? null);
       setRunStatus("ready");
       refreshStages();
     } catch (err) {
-      setError(err.message);
+      setError(err);
       setRunStatus("error");
     }
   }
@@ -98,15 +117,7 @@ export default function Evaluation() {
             and runtime -- measured before and after unlearning.
           </p>
         </div>
-        {resultKind && (
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-              resultKind === "measured" ? "bg-indigo-100 text-indigo-800" : "bg-amber-100 text-amber-800"
-            }`}
-          >
-            {resultKind === "measured" ? "Measured" : "Stored Experiment"}
-          </span>
-        )}
+        {resultKind && <ProvenanceBadge kind={resultKind} className="shrink-0" />}
       </div>
 
       {gateStatus === "missing" && (
@@ -119,7 +130,9 @@ export default function Evaluation() {
         </p>
       )}
 
-      {gateStatus === "ready" && (
+      {gateStatus === "ready" && demo && <DemoReplayNote stage="evaluation" hasResult={!!results} />}
+
+      {gateStatus === "ready" && !demo && (
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-gray-700">
             Run the Evaluation Engine for experiment{" "}
@@ -144,17 +157,15 @@ export default function Evaluation() {
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      <ErrorPanel error={error} onRetry={runEvaluation} />
 
       <BackendTraceNote trace={backendTrace} />
 
       {results && (
         <EvaluationMetrics before={results.before} after={results.after} runtime={results.runtime} />
       )}
+
+      <ExperimentConfigPanel experimentId={config.experiment_id} />
     </section>
   );
 }

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
 import ModelLibraryCard from "../components/ModelLibraryCard.jsx";
 import ComputeBackendPanel from "../components/ComputeBackendPanel.jsx";
+import { apiFetch } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
+import { ProvenanceLegend } from "../components/ProvenanceBadge.jsx";
 
 // Page 1 -- Overview (Dashboard Spec Ch.1-2, Ch.32 Page 1, Phase 12).
 //
@@ -27,11 +30,7 @@ export default function Overview() {
     let ignore = false;
     setStatus("loading");
     setError(null);
-    fetch("/api/experiments?trained_only=true")
-      .then((res) => {
-        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-        return res.json();
-      })
+    apiFetch("/api/experiments?trained_only=true")
       .then((data) => {
         if (!ignore) {
           setModels(data.experiments);
@@ -40,7 +39,7 @@ export default function Overview() {
       })
       .catch((err) => {
         if (!ignore) {
-          setError(err.message);
+          setError(err);
           setStatus("error");
         }
       });
@@ -102,6 +101,21 @@ export default function Overview() {
         </div>
       </div>
 
+      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-900">How to read the results</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Every result screen carries one of these labels, so you always know where a number came from. Presenting to
+          someone? The{" "}
+          <Link to="/demo" className="font-medium text-indigo-600 underline">
+            Professor Demo
+          </Link>{" "}
+          replays a stored experiment in about 10 minutes without training anything.
+        </p>
+        <div className="mt-4">
+          <ProvenanceLegend />
+        </div>
+      </div>
+
       <ComputeBackendPanel />
 
       {showLibrary && (
@@ -113,11 +127,7 @@ export default function Overview() {
           </p>
 
           {status === "loading" && <p className="mt-4 text-sm text-gray-500">Loading model library…</p>}
-          {status === "error" && (
-            <p role="alert" className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              Could not load the model library: {error}
-            </p>
-          )}
+          {status === "error" && <ErrorPanel className="mt-4" error={error} />}
           {status === "ready" && models.length === 0 && (
             <p className="mt-4 text-sm text-gray-500">
               No trained models yet -- run a Complete Experiment through Federated Learning first.

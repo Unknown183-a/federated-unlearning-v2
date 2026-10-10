@@ -1,43 +1,15 @@
 import { Router } from "express";
-import { spawn } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// backend/src/routes/ -> repo root
-const REPO_ROOT = join(__dirname, "..", "..", "..");
-
-function retrainingPath(experimentId) {
-  return join(REPO_ROOT, "experiments", experimentId, "retraining_results.json");
-}
-
-function runCli(args, res, resultKey, failLabel) {
-  const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
-
-  let stdout = "";
-  let stderr = "";
-  py.stdout.on("data", (chunk) => (stdout += chunk));
-  py.stderr.on("data", (chunk) => (stderr += chunk));
-
-  py.on("error", (err) => {
-    res.status(500).json({ error: `Could not start ${failLabel}`, detail: err.message });
-  });
-
-  py.on("close", (code) => {
-    if (res.headersSent) return;
-    if (code !== 0) {
-      return res.status(400).json({ error: `${failLabel} failed`, detail: stderr.trim() });
-    }
-    try {
-      res.status(200).json(JSON.parse(stdout));
-    } catch (err) {
-      res.status(500).json({ error: `Could not parse ${failLabel} output`, detail: stdout });
-    }
-  });
-}
+import { readArtifact, isValidExperimentId, validateExperimentIdParam } from "../artifacts.js";
+import { runEngine } from "../runEngine.js";
+import {
+  sendCorruptArtifact,
+  sendIncompleteArtifact,
+  sendInvalidRequest,
+  sendNotFound,
+} from "../errors.js";
 
 const router = Router();
+router.param("experimentId", validateExperimentIdParam);
 
 // POST /api/retraining -> run core.evaluation.retraining_cli (Python):
 // full-retraining-from-scratch baseline (excludes the unlearning
@@ -50,24 +22,36 @@ const router = Router();
 router.post("/", (req, res) => {
   const { experiment_id, device } = req.body || {};
   if (!experiment_id) {
-    return res.status(400).json({ error: "experiment_id is required" });
+    return sendInvalidRequest(res, "experiment_id is required");
+  }
+  if (!isValidExperimentId(String(experiment_id))) {
+    return sendInvalidRequest(res, "That experiment id is not valid.");
   }
   const args = ["-m", "core.evaluation.retraining_cli", "--experiment-id", String(experiment_id)];
   if (device !== undefined) args.push("--device", String(device));
-  runCli(args, res, "retraining", "The retraining baseline");
+  runEngine({
+    args,
+    stage: "retraining",
+    res,
+    experimentId: String(experiment_id),
+    onSuccess: (parsed) => res.status(200).json(parsed),
+  });
 });
 
 // GET /api/retraining/:experimentId -> re-read the most recently
 // persisted retraining baseline without re-running anything.
+// Incomplete baselines are refused, same rule as /api/evaluation.
 router.get("/:experimentId", (req, res) => {
-  const path = retrainingPath(req.params.experimentId);
-  if (!existsSync(path)) {
-    return res
-      .status(404)
-      .json({ error: `No retraining baseline found for experiment "${req.params.experimentId}"` });
+  const { experimentId } = req.params;
+  const artifact = readArtifact(experimentId, "retraining_results.json");
+  if (artifact.state === "missing") {
+    return sendNotFound(res, `No retraining baseline found for experiment "${experimentId}"`);
   }
-  const retraining = JSON.parse(readFileSync(path, "utf-8"));
-  res.status(200).json({ retraining });
+  if (artifact.state === "corrupt") return sendCorruptArtifact(res, "retraining baseline", experimentId);
+  if (artifact.data.status !== "complete") {
+    return sendIncompleteArtifact(res, "retraining baseline", experimentId, artifact.data.status);
+  }
+  res.status(200).json({ retraining: artifact.data });
 });
 
 // GET /api/retraining/:experimentId/comparison -> cheap re-computation
@@ -82,7 +66,13 @@ router.get("/:experimentId/comparison", (req, res) => {
     String(req.params.experimentId),
     "--compare-only",
   ];
-  runCli(args, res, "the comparison", "The comparison");
+  runEngine({
+    args,
+    stage: "retraining",
+    res,
+    experimentId: req.params.experimentId,
+    onSuccess: (parsed) => res.status(200).json(parsed),
+  });
 });
 
 export default router;

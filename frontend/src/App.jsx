@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink } from "react-router-dom";
+import { Routes, Route, NavLink, useLocation } from "react-router-dom";
 import Overview from "./pages/Overview.jsx";
 import ExperimentSetup from "./pages/ExperimentSetup.jsx";
 import DataDistribution from "./pages/DataDistribution.jsx";
@@ -8,6 +8,9 @@ import Unlearning from "./pages/Unlearning.jsx";
 import Evaluation from "./pages/Evaluation.jsx";
 import RetrainingComparison from "./pages/RetrainingComparison.jsx";
 import ExperimentHistory from "./pages/ExperimentHistory.jsx";
+import ProfessorDemo from "./pages/ProfessorDemo.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import DemoGuideBar from "./components/DemoGuideBar.jsx";
 import PipelineMiniMap from "./components/PipelineMiniMap.jsx";
 import { useExperimentConfig } from "./state/ExperimentContext.jsx";
 
@@ -21,6 +24,7 @@ const ROUTES = [
   { path: "/evaluation", label: "Evaluation", element: <Evaluation /> },
   { path: "/comparison", label: "Retraining Comparison", element: <RetrainingComparison /> },
   { path: "/history", label: "Experiment History", element: <ExperimentHistory /> },
+  { path: "/demo", label: "Professor Demo", element: <ProfessorDemo /> },
 ];
 
 // Grouped nav sections (Dashboard Spec Ch.33's sidebar wireframe:
@@ -30,8 +34,8 @@ const ROUTES = [
 // sidebar and the mini-map can never disagree about what's finished.
 // This *is* "the persistent navigation stepper reflecting the 9-page
 // order" (Phase 13): grouped, in spec order, with per-page progress.
-function navSections(stages, config) {
-  return [
+function navSections(stages, config, appMode) {
+  const sections = [
     {
       heading: "Experiment",
       items: [
@@ -61,11 +65,29 @@ function navSections(stages, config) {
       ],
     },
   ];
+
+  // Phase 15: Professor Demo Mode keeps the interface simple (Spec
+  // Ch.37) -- the setup and history pages are for building experiments,
+  // not for presenting one.
+  if (appMode === "demo") {
+    return sections.map((sec) => ({
+      ...sec,
+      items: sec.items.filter((i) => i.path !== "/setup" && i.path !== "/history"),
+    }));
+  }
+  return sections;
 }
 
 export default function App() {
-  const { config, stages } = useExperimentConfig();
-  const sections = navSections(stages, config);
+  const { config, stages, appMode, setAppMode } = useExperimentConfig();
+  const { pathname } = useLocation();
+  const sections = [
+    {
+      heading: "Presentation",
+      items: [{ path: "/demo", label: "Professor Demo" }],
+    },
+    ...navSections(stages, config, appMode),
+  ];
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 text-gray-900">
@@ -74,6 +96,22 @@ export default function App() {
         <nav aria-label="Experiment pages" className="w-64 flex-shrink-0 border-r border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-6 py-5">
             <h1 className="text-lg font-semibold text-gray-900">Federated Unlearning Lab</h1>
+            <div role="group" aria-label="Mode" className="mt-3 flex rounded-md border border-gray-300 p-0.5 text-xs font-medium">
+              {[
+                ["research", "Research"],
+                ["demo", "Professor Demo"],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={appMode === mode}
+                  onClick={() => setAppMode(mode)}
+                  className={`flex-1 rounded px-2 py-1 ${appMode === mode ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           {sections.map((section) => (
             <div key={section.heading} className="px-3 py-4">
@@ -109,11 +147,14 @@ export default function App() {
         </nav>
         <main className="flex-1 overflow-y-auto px-8 py-8">
           <div className="mx-auto max-w-5xl">
-            <Routes>
-              {ROUTES.map((item) => (
-                <Route key={item.path} path={item.path} element={item.element} />
-              ))}
-            </Routes>
+            <DemoGuideBar />
+            <ErrorBoundary resetKey={pathname}>
+              <Routes>
+                {ROUTES.map((item) => (
+                  <Route key={item.path} path={item.path} element={item.element} />
+                ))}
+              </Routes>
+            </ErrorBoundary>
           </div>
         </main>
       </div>

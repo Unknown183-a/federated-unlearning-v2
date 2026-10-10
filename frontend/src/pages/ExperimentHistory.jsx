@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import { apiFetch } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
+import ProvenanceBadge from "../components/ProvenanceBadge.jsx";
 
 // Page 9 -- Experiment History (Dashboard Spec Ch.32 Page 9, Phase 12).
 //
@@ -38,11 +41,7 @@ export default function ExperimentHistory() {
 
   useEffect(() => {
     let ignore = false;
-    fetch("/api/experiments")
-      .then((res) => {
-        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-        return res.json();
-      })
+    apiFetch("/api/experiments")
       .then((data) => {
         if (!ignore) {
           setExperiments(data.experiments);
@@ -51,7 +50,7 @@ export default function ExperimentHistory() {
       })
       .catch((err) => {
         if (!ignore) {
-          setError(err.message);
+          setError(err);
           setStatus("error");
         }
       });
@@ -79,11 +78,7 @@ export default function ExperimentHistory() {
       </div>
 
       {status === "loading" && <p className="text-sm text-gray-500">Loading experiment history…</p>}
-      {status === "error" && (
-        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          Could not load experiment history: {error}
-        </p>
-      )}
+      {status === "error" && <ErrorPanel error={error} />}
       {status === "ready" && experiments.length === 0 && (
         <p className="text-sm text-gray-500">
           No experiments yet -- start one from the Overview page to see it here.
@@ -91,6 +86,11 @@ export default function ExperimentHistory() {
       )}
 
       {status === "ready" && experiments.length > 0 && (
+        <>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <ProvenanceBadge kind="precomputed" />
+          <span>Every row below is a stored experiment.</span>
+        </div>
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
@@ -123,6 +123,11 @@ export default function ExperimentHistory() {
                     >
                       {experiment.status}
                     </span>
+                    {experiment.replayable && (
+                      <span className="ml-2 text-[11px] font-medium text-indigo-600" title="Every stage is stored, so the whole story can be replayed with no live backend.">
+                        Replayable
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{formatDate(experiment.updated_at)}</td>
                   <td className="px-4 py-3 text-right">
@@ -139,6 +144,7 @@ export default function ExperimentHistory() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </section>
   );

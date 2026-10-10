@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useExperimentConfig } from "../state/ExperimentContext.jsx";
+import { apiFetch, errorFromResponse } from "../lib/api.js";
+import ErrorPanel from "../components/ErrorPanel.jsx";
+import ProvenanceBadge from "../components/ProvenanceBadge.jsx";
+import ExperimentConfigPanel from "../components/ExperimentConfigPanel.jsx";
+import DemoReplayNote from "../components/DemoReplayNote.jsx";
 import RetrainingComparisonChart from "../components/RetrainingComparisonChart.jsx";
 import RuntimeComparisonChart from "../components/RuntimeComparisonChart.jsx";
 
@@ -27,7 +32,8 @@ function ProtocolNote({ protocol }) {
 }
 
 export default function RetrainingComparison() {
-  const { config, refreshStages } = useExperimentConfig();
+  const { config, refreshStages, appMode } = useExperimentConfig();
+  const demo = appMode === "demo";
 
   // loading | ready | missing -- "ready" means Phase 10's evaluation is stored.
   const [gateStatus, setGateStatus] = useState("loading");
@@ -63,7 +69,16 @@ export default function RetrainingComparison() {
     let ignore = false;
     fetch(`/api/retraining/${encodeURIComponent(config.experiment_id)}/comparison`)
       .then(async (res) => {
-        if (ignore || !res.ok) return;
+        if (ignore) return;
+        if (!res.ok) {
+          // 404/400 just mean "nothing stored yet"; anything else
+          // (corrupt or incomplete artifact) is shown, not hidden.
+          if (res.status !== 404 && res.status !== 400) {
+            const failure = await errorFromResponse(res);
+            if (!ignore) setError(failure);
+          }
+          return;
+        }
         const data = await res.json();
         if (data.comparison && data.comparison.status === "complete") {
           setResultKind("stored");
@@ -81,22 +96,17 @@ export default function RetrainingComparison() {
     setRunStatus("loading");
     setError(null);
     try {
-      const res = await fetch("/api/retraining", {
+      const data = await apiFetch("/api/retraining", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ experiment_id: config.experiment_id }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Request failed: ${res.status}`);
-      }
-      const data = await res.json();
       setResultKind("measured");
       setComparison(data.comparison);
       setRunStatus("ready");
       refreshStages();
     } catch (err) {
-      setError(err.message);
+      setError(err);
       setRunStatus("error");
     }
   }, [config.experiment_id, refreshStages]);
@@ -111,15 +121,7 @@ export default function RetrainingComparison() {
             excludes the target client entirely.
           </p>
         </div>
-        {resultKind && (
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-              resultKind === "measured" ? "bg-indigo-100 text-indigo-800" : "bg-amber-100 text-amber-800"
-            }`}
-          >
-            {resultKind === "measured" ? "Measured" : "Stored Experiment"}
-          </span>
-        )}
+        {resultKind && <ProvenanceBadge kind={resultKind} className="shrink-0" />}
       </div>
 
       {gateStatus === "missing" && (
@@ -132,7 +134,9 @@ export default function RetrainingComparison() {
         </p>
       )}
 
-      {gateStatus === "ready" && runStatus !== "ready" && (
+      {gateStatus === "ready" && demo && <DemoReplayNote stage="retraining comparison" hasResult={!!comparison} />}
+
+      {gateStatus === "ready" && !demo && runStatus !== "ready" && (
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-gray-700">
             Retrain from scratch, excluding this experiment's target client, for{" "}
@@ -159,11 +163,7 @@ export default function RetrainingComparison() {
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      <ErrorPanel error={error} onRetry={runRetrainingBaseline} />
 
       {comparison && (
         <>
@@ -205,6 +205,8 @@ export default function RetrainingComparison() {
           </div>
         </>
       )}
+
+      <ExperimentConfigPanel experimentId={config.experiment_id} />
     </section>
   );
 }

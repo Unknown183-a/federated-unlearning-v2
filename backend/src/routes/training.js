@@ -1,31 +1,30 @@
 import { Router } from "express";
-import { spawn } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// backend/src/routes/ -> repo root
-const REPO_ROOT = join(__dirname, "..", "..", "..");
-
-function historyPath(experimentId) {
-  return join(REPO_ROOT, "experiments", experimentId, "fl_history.json");
-}
+import { readArtifact, isValidExperimentId, validateExperimentIdParam } from "../artifacts.js";
+import { runEngine } from "../runEngine.js";
+import { sendCorruptArtifact, sendInvalidRequest, sendNotFound } from "../errors.js";
 
 const router = Router();
+router.param("experimentId", validateExperimentIdParam);
 
 // POST /api/training -> run core/federated (Python) FedAvg loop for this
 // experiment, persist the round-by-round history to
 // experiments/<id>/fl_history.json, and return it (Phase 05: FL Engine
 // + API). Requires that /api/partition has already been run for this
 // experiment_id -- the training CLI loads that saved partition.
+//
+// Phase 15: failures come back as structured errors (see errors.js),
+// and the experiment id is validated before it reaches the filesystem.
 router.post("/", (req, res) => {
   const { experiment_id, model, federated_rounds, local_epochs, seed, backend } = req.body || {};
 
   if (!experiment_id || !model || !federated_rounds || !local_epochs || seed === undefined) {
-    return res.status(400).json({
-      error: "experiment_id, model, federated_rounds, local_epochs, and seed are all required",
-    });
+    return sendInvalidRequest(
+      res,
+      "experiment_id, model, federated_rounds, local_epochs, and seed are all required"
+    );
+  }
+  if (!isValidExperimentId(String(experiment_id))) {
+    return sendInvalidRequest(res, "That experiment id is not valid.");
   }
 
   const args = [
@@ -48,44 +47,29 @@ router.post("/", (req, res) => {
   // is present (adds backend_trace alongside history).
   if (backend !== undefined) args.push("--backend", String(backend));
 
-  const py = spawn(process.env.PYTHON_BIN || "python3", args, { cwd: REPO_ROOT });
-
-  let stdout = "";
-  let stderr = "";
-  py.stdout.on("data", (chunk) => (stdout += chunk));
-  py.stderr.on("data", (chunk) => (stderr += chunk));
-
-  py.on("error", (err) => {
-    res.status(500).json({ error: "Could not start the federated training engine", detail: err.message });
-  });
-
-  py.on("close", (code) => {
-    if (res.headersSent) return;
-    if (code !== 0) {
-      return res.status(400).json({ error: "Training failed", detail: stderr.trim() });
-    }
-    try {
-      const parsed = JSON.parse(stdout);
-      res
-        .status(200)
-        .json(backend !== undefined ? parsed : { history: parsed });
-    } catch (err) {
-      res.status(500).json({ error: "Could not parse training engine output", detail: stdout });
-    }
+  runEngine({
+    args,
+    stage: "training",
+    res,
+    experimentId: String(experiment_id),
+    onSuccess: (parsed) => res.status(200).json(backend !== undefined ? parsed : { history: parsed }),
   });
 });
 
 // GET /api/training/:experimentId -> re-read a previously computed FL
 // history without re-running training (get_fl_history()).
 router.get("/:experimentId", (req, res) => {
-  const path = historyPath(req.params.experimentId);
-  if (!existsSync(path)) {
-    return res
-      .status(404)
-      .json({ error: `No training history found for experiment "${req.params.experimentId}"` });
+  const { experimentId } = req.params;
+  const artifact = readArtifact(experimentId, "fl_history.json");
+  if (artifact.state === "missing") {
+    return sendNotFound(
+      res,
+      `No trained checkpoint exists for experiment "${experimentId}".`,
+      "MODEL_UNAVAILABLE"
+    );
   }
-  const history = JSON.parse(readFileSync(path, "utf-8"));
-  res.status(200).json({ history });
+  if (artifact.state === "corrupt") return sendCorruptArtifact(res, "training history", experimentId);
+  res.status(200).json({ history: artifact.data });
 });
 
 export default router;
