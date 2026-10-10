@@ -1,15 +1,15 @@
 {
   "experiment_id": "exp-mv2d3hn6-zf17vh",
-  "target_client_id": 0,
+  "target_client_id": 2,
   "model": "cnn",
   "dataset": "mnist",
   "before": {
     "global_accuracy": 0.9903,
-    "forget_client_accuracy": 0.9958527295810411,
-    "retained_client_accuracy": 0.9926112409023662,
+    "forget_client_accuracy": 0.9887948207171314,
+    "retained_client_accuracy": 0.9933954529983562,
     "retained_client_accuracy_per_client": {
+      "0": 0.9958527295810411,
       "1": 0.9944933920704846,
-      "2": 0.9887948207171314,
       "3": 0.994411720283945,
       "4": 0.9957010582010583,
       "5": 0.9954379562043796,
@@ -18,46 +18,53 @@
       "8": 0.9896429544835105,
       "9": 0.9915091316885614
     },
-    "mia_success": 0.53,
+    "mia_success": 0.515,
     "mia_detail": {
-      "attack_accuracy": 0.53,
-      "threshold": 0.0016076747560873628,
-      "member_count": 11815,
+      "attack_accuracy": 0.515,
+      "threshold": 0.0020019030198454857,
+      "member_count": 4016,
       "non_member_count": 200,
-      "mean_member_loss": 0.0160782840102911,
-      "mean_non_member_loss": 0.006244217976927757
+      "mean_member_loss": 0.034628160297870636,
+      "mean_non_member_loss": 0.006244197022169828
     }
   },
   "after": {
-    "global_accuracy": 0.9909,
-    "forget_client_accuracy": 0.9955988150655946,
-    "retained_client_accuracy": 0.9948460608144586,
+    "global_accuracy": 0.988,
+    "forget_client_accuracy": 0.9830677290836654,
+    "retained_client_accuracy": 0.9906271375651623,
     "retained_client_accuracy_per_client": {
-      "1": 0.9950440528634361,
-      "2": 0.9927788844621513,
-      "3": 0.9962241353269898,
-      "4": 0.9968033509700176,
-      "5": 0.997536496350365,
-      "6": 0.9948919449901769,
-      "7": 0.9935265104808878,
-      "8": 0.9920959389479422,
-      "9": 0.9947132329381608
+      "0": 0.9922979263647905,
+      "1": 0.9928414096916299,
+      "3": 0.9927503398278206,
+      "4": 0.9919532627865961,
+      "5": 0.9927919708029197,
+      "6": 0.9862475442043221,
+      "7": 0.9895191122071517,
+      "8": 0.9890978468247479,
+      "9": 0.9881448253764819
     },
-    "mia_success": 0.5375,
+    "mia_success": 0.515,
     "mia_detail": {
-      "attack_accuracy": 0.5375,
-      "threshold": 0.0027421037666499615,
-      "member_count": 11815,
+      "attack_accuracy": 0.515,
+      "threshold": 2.3841855067985307e-07,
+      "member_count": 4016,
       "non_member_count": 200,
-      "mean_member_loss": 0.01606740988790989,
-      "mean_non_member_loss": 0.0073771714232862
+      "mean_member_loss": 0.049910176545381546,
+      "mean_non_member_loss": 0.010748231783509254
     }
   },
+  "software": {
+    "project_version": "1.0.0",
+    "git_commit": "c2b55b8",
+    "python": "3.13.15",
+    "torch": "2.11.0+cu130",
+    "numpy": "2.1.3"
+  },
   "runtime": {
-    "gradient_ascent_seconds": 3.682309865951538,
-    "knowledge_distillation_seconds": 60.338561058044434,
-    "total_unlearning_seconds": 64.81117272377014,
-    "evaluation_seconds": 7.88060998916626
+    "gradient_ascent_seconds": 42.28915858268738,
+    "knowledge_distillation_seconds": 379.18543815612793,
+    "total_unlearning_seconds": 430.614759683609,
+    "evaluation_seconds": 55.91301155090332
   },
   "status": "complete"
 }
