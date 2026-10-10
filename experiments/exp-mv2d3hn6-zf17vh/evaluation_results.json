@@ -1,0 +1,63 @@
+{
+  "experiment_id": "exp-mv2d3hn6-zf17vh",
+  "target_client_id": 0,
+  "model": "cnn",
+  "dataset": "mnist",
+  "before": {
+    "global_accuracy": 0.9903,
+    "forget_client_accuracy": 0.9958527295810411,
+    "retained_client_accuracy": 0.9926112409023662,
+    "retained_client_accuracy_per_client": {
+      "1": 0.9944933920704846,
+      "2": 0.9887948207171314,
+      "3": 0.994411720283945,
+      "4": 0.9957010582010583,
+      "5": 0.9954379562043796,
+      "6": 0.9921414538310412,
+      "7": 0.9913686806411838,
+      "8": 0.9896429544835105,
+      "9": 0.9915091316885614
+    },
+    "mia_success": 0.53,
+    "mia_detail": {
+      "attack_accuracy": 0.53,
+      "threshold": 0.0016076747560873628,
+      "member_count": 11815,
+      "non_member_count": 200,
+      "mean_member_loss": 0.0160782840102911,
+      "mean_non_member_loss": 0.006244217976927757
+    }
+  },
+  "after": {
+    "global_accuracy": 0.9909,
+    "forget_client_accuracy": 0.9955988150655946,
+    "retained_client_accuracy": 0.9948460608144586,
+    "retained_client_accuracy_per_client": {
+      "1": 0.9950440528634361,
+      "2": 0.9927788844621513,
+      "3": 0.9962241353269898,
+      "4": 0.9968033509700176,
+      "5": 0.997536496350365,
+      "6": 0.9948919449901769,
+      "7": 0.9935265104808878,
+      "8": 0.9920959389479422,
+      "9": 0.9947132329381608
+    },
+    "mia_success": 0.5375,
+    "mia_detail": {
+      "attack_accuracy": 0.5375,
+      "threshold": 0.0027421037666499615,
+      "member_count": 11815,
+      "non_member_count": 200,
+      "mean_member_loss": 0.01606740988790989,
+      "mean_non_member_loss": 0.0073771714232862
+    }
+  },
+  "runtime": {
+    "gradient_ascent_seconds": 3.682309865951538,
+    "knowledge_distillation_seconds": 60.338561058044434,
+    "total_unlearning_seconds": 64.81117272377014,
+    "evaluation_seconds": 7.88060998916626
+  },
+  "status": "complete"
+}
