@@ -10,6 +10,7 @@ import evaluationRouter from "./routes/evaluation.js";
 import retrainingRouter from "./routes/retraining.js";
 import experimentsRouter from "./routes/experiments.js";
 import computeRouter from "./routes/compute.js";
+import releasesRouter from "./routes/releases.js";
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use("/api/evaluation", evaluationRouter);
 app.use("/api/retraining", retrainingRouter);
 app.use("/api/experiments", experimentsRouter);
 app.use("/api/compute", computeRouter);
+app.use("/api/releases", releasesRouter);
 
 // Health-check route (Phase 00 deliverable).
 app.get("/status", async (_req, res) => {

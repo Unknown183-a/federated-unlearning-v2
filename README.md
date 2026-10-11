@@ -32,6 +32,10 @@ In Research Mode, work down the left menu once: **Setup**, **Data Distribution**
 
 Switch to **Professor Demo** (top of the left menu), choose a stored experiment and press **START DEMO**. It replays the whole story (data split, training, client selection, unlearning, results, retraining comparison) in about 10 minutes, with a speaking guide on every page. It **never trains or re-runs anything**, so it works with no GPU and no live backend. The talk track is in [`docs/DEMO_SCRIPT.md`](./docs/DEMO_SCRIPT.md).
 
+## Model updates
+
+After unlearning, publish the unlearned model as a new version for devices that already installed the old one: **Auto update**, or **Request, then update automatically after a deadline**. See [`docs/MODEL_UPDATES.md`](./docs/MODEL_UPDATES.md). Devices are simulated.
+
 ## How results are labelled
 
 Every result screen shows one label, so you always know where a number came from.

@@ -9,6 +9,7 @@ import Evaluation from "./pages/Evaluation.jsx";
 import RetrainingComparison from "./pages/RetrainingComparison.jsx";
 import ExperimentHistory from "./pages/ExperimentHistory.jsx";
 import ProfessorDemo from "./pages/ProfessorDemo.jsx";
+import ModelUpdates from "./pages/ModelUpdates.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import DemoGuideBar from "./components/DemoGuideBar.jsx";
 import PipelineMiniMap from "./components/PipelineMiniMap.jsx";
@@ -24,6 +25,7 @@ const ROUTES = [
   { path: "/evaluation", label: "Evaluation", element: <Evaluation /> },
   { path: "/comparison", label: "Retraining Comparison", element: <RetrainingComparison /> },
   { path: "/history", label: "Experiment History", element: <ExperimentHistory /> },
+  { path: "/updates", label: "Model Updates", element: <ModelUpdates /> },
   { path: "/demo", label: "Professor Demo", element: <ProfessorDemo /> },
 ];
 
@@ -64,6 +66,10 @@ function navSections(stages, config, appMode) {
         { path: "/history", label: "Experiment History" },
       ],
     },
+    {
+      heading: "Deployment",
+      items: [{ path: "/updates", label: "Model Updates" }],
+    },
   ];
 
   // Phase 15: Professor Demo Mode keeps the interface simple (Spec
@@ -72,7 +78,7 @@ function navSections(stages, config, appMode) {
   if (appMode === "demo") {
     return sections.map((sec) => ({
       ...sec,
-      items: sec.items.filter((i) => i.path !== "/setup" && i.path !== "/history"),
+      items: sec.items.filter((i) => i.path !== "/setup" && i.path !== "/history" && i.path !== "/updates"),
     }));
   }
   return sections;

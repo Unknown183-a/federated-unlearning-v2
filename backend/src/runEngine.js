@@ -22,7 +22,7 @@ function timeoutMs() {
 /**
  * @param {object} opts
  * @param {string[]} opts.args          python arguments, e.g. ["-m", "core.federated.cli", ...]
- * @param {"partition"|"training"|"unlearning"|"evaluation"|"retraining"} opts.stage
+ * @param {"partition"|"training"|"unlearning"|"evaluation"|"retraining"|"release"} opts.stage
  * @param {import("express").Response} opts.res
  * @param {string} [opts.experimentId]  lets an unlearning failure report *which* stage failed
  * @param {(parsed: any) => void} opts.onSuccess  called with the parsed JSON stdout
