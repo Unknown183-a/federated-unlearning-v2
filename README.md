@@ -2,7 +2,7 @@
 
 This repository tracks the phased implementation of the **Federated Unlearning Lab** interactive dashboard, following the architecture and product specification in `FEDERATED_UNLEARNING_DASHBOARD_SPEC_V2.md`.
 
-Implementation of Phases 00–14 is complete and Phase 15 (hardening and launch) is in progress. See the Phase Index below.
+Implementation of Phases 00–14 and Phase 16 is complete, and Phase 15 (hardening and launch) is code-complete with its 3-dataset acceptance run pending. See the Phase Index below.
 
 ## How to use this repo
 
@@ -81,6 +81,7 @@ Failures show what failed, which stage, and what to do next (Retry, Run Training
 | 13 | [`phase-13-dashboard-ux/`](./phase-13-dashboard-ux/README.md) | Dashboard UX — Navigation, State & Visual Design System | Complete |
 | 14 | [`phase-14-compute-backend-architecture/`](./phase-14-compute-backend-architecture/README.md) | Backend Service Layer & Compute Backend Architecture | Complete |
 | 15 | [`phase-15-polish-launch/`](./phase-15-polish-launch/README.md) | Error Handling, Reproducibility, Professor Demo Mode & Launch | In Progress (code done; 3-dataset acceptance run pending) |
+| 16 | [`phase-16-model-updates/`](./phase-16-model-updates/README.md) | Model Releases & Update Policy | Complete |
 
 ## Overall Progress
 
@@ -100,6 +101,7 @@ Failures show what failed, which stage, and what to do next (Retry, Run Training
 - [x] Phase 13 — Dashboard UX: Navigation, State & Visual Design
 - [x] Phase 14 — Backend Service Layer & Compute Backend Architecture
 - [ ] Phase 15 — Error Handling, Reproducibility, Demo Mode & Launch (code complete; run the acceptance checklist on all 3 datasets to close it)
+- [x] Phase 16 — Model Releases & Update Policy
 
 ## Read the Architecture Document
 

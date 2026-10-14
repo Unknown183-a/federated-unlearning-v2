@@ -49,4 +49,4 @@ Phase 14 (compute backend architecture)
 
 ---
 Previous: [Phase 14 — Backend Service Layer & Compute Backend Architecture](../phase-14-compute-backend-architecture/README.md)
-Next: None (final phase)
+Next: [Phase 16 — Model Releases & Update Policy](../phase-16-model-updates/README.md)
