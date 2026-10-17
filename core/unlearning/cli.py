@@ -33,6 +33,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kd-temperature", type=float, default=4.0, help="KD softmax temperature")
     parser.add_argument("--kd-alpha", type=float, default=0.5, help="KD hard-label loss weight")
     parser.add_argument("--kd-batch-size", type=int, default=64, help="Knowledge Distillation batch size")
+    parser.add_argument(
+        "--calibrated",
+        action="store_true",
+        help="Stop Gradient Ascent by calibrated rules (KS match to unseen data + retained-accuracy guard) instead of only the step budget.",
+    )
+    parser.add_argument("--ks-target", type=float, default=0.1, help="Calibrated mode: stop when KS distance <= this")
+    parser.add_argument("--max-retain-drop", type=float, default=0.05, help="Calibrated mode: max allowed retained guard-accuracy drop")
     # Phase 14: optional compute backend selection. Omitted (the
     # default) behaves exactly as before this flag existed.
     parser.add_argument(
@@ -54,6 +61,14 @@ def main(argv: list[str] | None = None) -> int:
         kd_alpha=args.kd_alpha,
         kd_batch_size=args.kd_batch_size,
     )
+    if args.calibrated:
+        # Only passed when requested, so remote backends that predate
+        # these arguments keep receiving exactly what they used to.
+        unlearning_kwargs.update(
+            calibrated=True,
+            ks_target=args.ks_target,
+            max_retain_drop=args.max_retain_drop,
+        )
 
     if args.backend is not None:
         from core.compute.base import BackendUnavailableError, NotSupportedError

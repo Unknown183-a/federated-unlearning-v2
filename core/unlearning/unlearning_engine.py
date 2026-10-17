@@ -27,6 +27,7 @@ from core.datasets.base import get_dataset
 from core.federated.storage import load_fl_history, load_model_checkpoint
 from core.partitioning.storage import load_partition
 from core.provenance import software_info
+from core.unlearning.calibration import CalibrationConfig
 from core.unlearning.gradient_ascent import run_gradient_ascent
 from core.unlearning.knowledge_distillation import run_knowledge_distillation
 from core.unlearning.storage import (
@@ -35,6 +36,20 @@ from core.unlearning.storage import (
     save_ga_checkpoint,
     save_unlearning_status,
 )
+
+
+#: The Phase 10 evaluation uses test indices [0, 200) as MIA non-members.
+#: Calibration reference samples start well past that so the yardstick
+#: used to *control* unlearning is never the data used to *score* it.
+CALIBRATION_REFERENCE_OFFSET = 1000
+
+
+def _evenly_spaced(pool: list[int], count: int) -> list[int]:
+    """Up to `count` indices spread evenly across `pool` (deterministic)."""
+    if count >= len(pool):
+        return list(pool)
+    stride = len(pool) / count
+    return [pool[int(i * stride)] for i in range(count)]
 
 
 def start_unlearning(
@@ -49,6 +64,11 @@ def start_unlearning(
     kd_alpha: float = 0.5,
     kd_batch_size: int = 64,
     device: str = "cpu",
+    calibrated: bool = False,
+    ks_target: float = 0.1,
+    max_retain_drop: float = 0.05,
+    reference_size: int = 500,
+    guard_size: int = 1000,
 ) -> dict:
     """Run the full Gradient Ascent -> Knowledge Distillation pipeline
     against `client_id`'s local data.
@@ -72,6 +92,22 @@ def start_unlearning(
     retained_clients = [c for c in clients if c["client_id"] != client_id]
 
     dataset = get_dataset(partition["dataset"]).get_train()
+
+    calibration = None
+    if calibrated:
+        test_data = get_dataset(partition["dataset"]).get_test()
+        reference_end = min(len(test_data), CALIBRATION_REFERENCE_OFFSET + reference_size)
+        if reference_end - CALIBRATION_REFERENCE_OFFSET < 50:
+            raise ValueError("test split too small to hold a calibration reference set")
+        retained_pool = [i for c in retained_clients for i in c["indices"]]
+        calibration = CalibrationConfig(
+            reference_dataset=test_data,
+            reference_indices=list(range(CALIBRATION_REFERENCE_OFFSET, reference_end)),
+            guard_dataset=dataset,
+            guard_indices=_evenly_spaced(retained_pool, guard_size),
+            ks_target=ks_target,
+            max_retain_drop=max_retain_drop,
+        )
 
     # The pre-ascent global model is Knowledge Distillation's teacher
     # (Phase 09's goal): capture it now, before Gradient Ascent
@@ -102,6 +138,15 @@ def start_unlearning(
         "seed": history.get("seed"),
         "software": software_info(),
     }
+    if calibrated:
+        # `method` is left unchanged so existing dashboards keep working;
+        # the extension is recorded alongside the hyperparameters.
+        status["hyperparameters"]["calibration"] = {
+            "ks_target": ks_target,
+            "max_retain_drop": max_retain_drop,
+            "reference_size": reference_size,
+            "guard_size": guard_size,
+        }
     save_unlearning_status(experiment_id, status)
 
     # -- Stage 1: Gradient Ascent (Phase 08) --------------------------
@@ -118,6 +163,7 @@ def start_unlearning(
             lr=lr,
             batch_size=batch_size,
             device=device,
+            calibration=calibration,
         )
     except Exception as exc:
         status = {
@@ -149,6 +195,8 @@ def start_unlearning(
         "step_history": ga_result["step_history"],
         "duration_seconds": time.time() - ga_started_at,
     }
+    if "calibration" in ga_result:
+        gradient_ascent_summary["calibration"] = ga_result["calibration"]
 
     status = {
         **status,
