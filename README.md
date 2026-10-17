@@ -298,6 +298,7 @@ deletion request.
 
 ### Implementation Status
 
+- **Implemented so far:** opt-in calibrated stopping for Gradient Ascent (`--calibrated`). Adaptive strength control and class-aware KD are not implemented.
 -   **Existing project:** Federated-learning and unlearning components
     should be described as implemented only when confirmed in the
     current repository.
