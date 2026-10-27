@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Federated Unlearning Lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#EDF0F3;--surf:#FFFFFF;--ink:#16212C;--mute:#5B6B7A;--line:#D3DBE3;--g:#0E7C86;--t:#C2410C;--c:#3454D1;--ok:#2F7D4F;--soft:#F5F7F9;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E151C;--surf:#16202A;--ink:#E6ECF1;--mute:#93A3B2;--line:#283644;--g:#3CC1CC;--t:#FF8A4C;--c:#8AA2FF;--ok:#5FC088;--soft:#1B2733;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0E151C;--surf:#16202A;--ink:#E6ECF1;--mute:#93A3B2;--line:#283644;--g:#3CC1CC;--t:#FF8A4C;--c:#8AA2FF;--ok:#5FC088;--soft:#1B2733;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+.rail{background:var(--surf);border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;gap:22px;position:sticky;top:env(safe-area-inset-top,0px);align-self:start;height:100vh}
+.brand b{display:block;font-size:17px;letter-spacing:-.01em}
+.brand span{color:var(--mute);font-size:13px}
+nav{display:flex;flex-direction:column;gap:4px}
+nav button{display:flex;gap:12px;align-items:center;text-align:left;border:0;background:none;color:var(--ink);padding:10px;border-radius:8px;font:inherit;cursor:pointer}
+nav button i{flex:none;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font:600 12px/1 inherit;font-style:normal;color:var(--mute)}
+nav button small{display:block;color:var(--mute);font-size:12px}
+nav button.on{background:var(--soft)}
+nav button.on i{border-color:var(--g);color:var(--g)}
+nav button.done i{background:var(--g);border-color:var(--g);color:#fff}
+nav button:disabled{opacity:.45;cursor:not-allowed}
+nav button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--c);outline-offset:2px}
+.rail-foot{margin-top:auto;color:var(--mute);font-size:12px}
+.rail-foot button{margin-top:8px}
+main{padding:28px clamp(16px,3vw,40px) 48px;max-width:1080px;width:100%}
+h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px}
+.lead{color:var(--mute);margin:0 0 20px;max-width:64ch}
+.banner{background:var(--soft);border:1px solid var(--line);border-left:3px solid var(--t);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--mute);margin-bottom:20px}
+.view{display:none}.view.on{display:block}
+.panel{background:var(--surf);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+.panel h2{font-size:15px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+label{display:block;font-weight:500;font-size:14px}
+label output{float:right;color:var(--mute);font-weight:400}
+label small{display:block;color:var(--mute);font-weight:400;font-size:12px;margin-top:2px}
+input[type=range]{width:100%;margin:8px 0 2px;accent-color:var(--g)}
+input[type=number],select{width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surf);color:var(--ink);font:inherit}
+.bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.btn{border:0;background:var(--g);color:#fff;font:600 14px/1 inherit;padding:11px 18px;border-radius:8px;cursor:pointer}
+:root[data-theme="dark"] .btn{color:#06222A}
+.btn.alt{background:var(--t)}
+.btn:disabled{opacity:.5;cursor:wait}
+.status{color:var(--mute);font-size:13px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--surf);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{display:block;font-size:22px;letter-spacing:-.01em}
+.stat span{color:var(--mute);font-size:12px}
+svg{display:block;width:100%;height:auto}
+svg text{fill:var(--mute);font:11px "Instrument Sans",system-ui,sans-serif}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--mute)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+th,td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--mute);font-size:13px}
+td.best{color:var(--ok);font-weight:600}
+.verdict{border-left:3px solid var(--g);padding:4px 0 4px 14px;margin:16px 0 16px;max-width:70ch}
+#t-samp td:nth-child(2){text-align:left;white-space:nowrap}
+#t-samp canvas{border-radius:6px;vertical-align:middle;margin-right:8px;background:#0b1218}
+#t-samp .big{display:block;font-size:20px;font-weight:700;color:var(--ink)}
+.good{color:var(--ok);font-weight:600}.badc{color:var(--t);font-weight:600}
+#t-samp td span{font-size:12px;color:var(--mute);font-weight:400;display:block}
+@media (max-width:860px){
+.app{grid-template-columns:1fr}
+.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:14px 12px;gap:10px}
+nav{flex-direction:row;overflow-x:auto}
+nav button{flex:none}nav button small{display:none}
+.rail-foot{display:none}
+.split{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="rail">
+  <div class="brand"><b>Federated Unlearning Lab</b><span>Simulate, forget, verify</span></div>
+  <nav id="nav" aria-label="Experiment stages"></nav>
+  <div class="rail-foot">Gradient ascent + knowledge distillation, compared with full retraining.<br><button class="btn" style="background:var(--soft);color:var(--ink);border:1px solid var(--line)" id="theme">Switch theme</button></div>
+</aside>
+<main>
+  <h1 id="title"></h1>
+  <p class="lead" id="lead"></p>
+  <div class="banner">Prototype with a simulated engine. All numbers are modeled, not trained. Replace the functions in the <code>engine</code> block with your real FL backend.</div>
+
+  <section class="view" id="v0">
+    <div class="panel"><h2>Federation</h2><div class="grid">
+      <label>Clients <output id="o-n"></output><input type="range" id="n" min="4" max="12" value="8"><small>Participants in the federation</small></label>
+      <label>Training rounds <output id="o-rounds"></output><input type="range" id="rounds" min="10" max="40" value="20"><small>FedAvg aggregation rounds</small></label>
+      <label>Data heterogeneity <output id="o-skew"></output><input type="range" id="skew" min="0" max="1" step="0.1" value="0.5"><small>0 is uniform, 1 is highly non-IID</small></label>
+    </div></div>
+    <div class="panel"><h2>Forget request</h2><div class="grid">
+      <label>Client to forget<select id="target"></select><small>All of this client’s data is removed from the global model</small></label>
+      <label>Random seed<input type="number" id="seed" value="7" min="0" max="9999"><small>Same seed gives the same run</small></label>
+    </div></div>
+    <div class="bar"><button class="btn" id="b-setup">Save and continue</button></div>
+  </section>
+
+  <section class="view" id="v1">
+    <div class="stats" id="s-part"></div>
+    <div class="panel"><h2>Class distribution per client</h2><div id="c-part"></div><div class="legend" id="l-part"></div></div>
+    <div class="bar"><button class="btn" id="b-part">Generate partition</button><span class="status" id="st-part"></span></div>
+  </section>
+
+  <section class="view" id="v2">
+    <div class="split">
+      <div class="panel"><h2>Global model accuracy</h2><div id="c-train"></div><div class="legend"><span><i style="background:var(--g)"></i>Global test accuracy</span></div></div>
+      <div class="panel"><h2>Round <span id="rnd">0</span></h2><div id="ring"></div></div>
+    </div>
+    <div class="bar"><button class="btn" id="b-train">Start training</button><span class="status" id="st-train"></span></div>
+  </section>
+
+  <section class="view" id="v3">
+    <div class="panel"><h2>Unlearning progress</h2><div id="c-un"></div>
+      <div class="legend"><span><i style="background:var(--c)"></i>Test accuracy</span><span><i style="background:var(--g)"></i>Retained data</span><span><i style="background:var(--t)"></i>Forgotten data</span></div></div>
+    <div class="bar"><button class="btn alt" id="b-un">Unlearn client</button><span class="status" id="st-un"></span></div>
+  </section>
+
+  <section class="view" id="v4">
+    <div class="stats" id="s-eval"></div>
+    <div class="panel scroll"><h2>Original vs. unlearned vs. retrained</h2><table id="t-eval"></table></div>
+    <p class="verdict" id="verdict"></p>
+    <div class="panel scroll"><h2>Sample predictions</h2><p class="status" style="margin:0 0 12px">Top three rows come from the forgotten client, bottom three from clients that stayed. After unlearning, the forgotten rows should no longer be predicted correctly. Sample images are generated placeholders.</p><table id="t-samp"></table><div class="bar"><button class="btn" id="b-samp">Show other samples</button></div></div>
+  </section>
+</main>
+</div>
+<script>
+/* ---------- engine (simulated; swap for real backend) ---------- */
+const CLASSES = 10, STEPS = 30, GA = 10;
+const rng = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const engine = {
+  partition(S) {
+    const r = rng(S.seed);
+    return Array.from({ length: S.n }, () => {
+      const w = Array.from({ length: CLASSES }, () => Math.pow(r(), 1 + S.skew * 6) + 0.01);
+      const size = 300 + Math.round(r() * 400), sum = w.reduce((a, b) => a + b, 0);
+      return w.map(x => Math.round(x / sum * size));
+    });
+  },
+  train(S) {
+    const r = rng(S.seed + 1), ceil = 0.93 - 0.14 * S.skew;
+    return Array.from({ length: S.rounds }, (_, i) => clamp(ceil * (1 - Math.exp(-(i + 1) / (S.rounds * 0.28))) + (r() - 0.5) * 0.012));
+  },
+  unlearn(S, final) {
+    const r = rng(S.seed + 2), ret0 = clamp(final + 0.02), for0 = clamp(final + 0.04);
+    const ease = x => x * x * (3 - 2 * x), test = [], ret = [], forg = [];
+    for (let t = 0; t <= STEPS; t++) {
+      const ga = ease(clamp(t / GA)), kd = 1 - Math.exp(-Math.max(0, t - GA) / 5);
+      forg.push(clamp(for0 + (0.05 - for0) * ga + 0.05 * kd + (r() - .5) * .01));
+      ret.push(clamp(ret0 - 0.14 * ga + 0.13 * kd + (r() - .5) * .008));
+      test.push(clamp(final - 0.12 * ga + 0.115 * kd + (r() - .5) * .008));
+    }
+    return { test, ret, forg, for0, ret0 };
+  }
+};
+
+/* ---------- state ---------- */
+const STAGES = [["Setup", "Experiment settings"], ["Partition", "Split data across clients"], ["Train", "Federated averaging"], ["Unlearn", "Forget one client"], ["Evaluate", "Compare with retraining"]];
+const TITLES = [
+  ["Set up the experiment", "Choose the federation size, data skew and which client asks to be forgotten."],
+  ["Partition the data", "See how the dataset is divided. The skew setting controls how uneven each client’s classes are."],
+  ["Train the global model", "Clients train locally and the server averages their updates each round."],
+  ["Unlearn the client", "Gradient ascent removes the client’s influence, then distillation restores accuracy on everyone else."],
+  ["Evaluate the result", "Check whether the forgotten data is gone and how it compares with retraining from scratch."]
+];
+let S = {}, R = {}, view = 0, unlocked = 0, busy = false;
+const $ = id => document.getElementById(id);
+const pct = x => (x * 100).toFixed(1) + "%";
+const hue = i => `hsl(${i * 36},55%,52%)`;
+
+/* ---------- charts ---------- */
+function lineChart(el, series, xmax, bands = []) {
+  const W = 640, H = 260, L = 40, Rr = 12, T = 12, B = 26, pw = W - L - Rr, ph = H - T - B;
+  const X = i => L + i / Math.max(1, xmax) * pw, Y = v => T + (1 - v) * ph;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Line chart">`;
+  bands.forEach(b => { s += `<rect x="${X(b.a)}" y="${T}" width="${X(b.b) - X(b.a)}" height="${ph}" fill="${b.c}" opacity=".08"/><text x="${X(b.a) + 6}" y="${T + 14}">${b.t}</text>`; });
+  [0, .25, .5, .75, 1].forEach(v => { s += `<line x1="${L}" x2="${W - Rr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v * 100}%</text>`; });
+  for (let i = 0; i <= xmax; i += Math.ceil(xmax / 8)) s += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle">${i}</text>`;
+  series.forEach(se => { if (se.v.length) s += `<path d="${se.v.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join("")}" fill="none" stroke="${se.c}" stroke-width="2.5" stroke-linejoin="round"/>`; });
+  el.innerHTML = s + "</svg>";
+}
+function partChart() {
+  const n = R.part.length, rowH = 26, W = 640, L = 64, pw = W - L - 12, H = n * rowH + 8;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Class distribution per client">`;
+  R.part.forEach((row, k) => {
+    const sum = row.reduce((a, b) => a + b, 0); let x = L;
+    s += `<text x="${L - 8}" y="${k * rowH + 17}" text-anchor="end" ${k === S.target ? 'style="fill:var(--t);font-weight:700"' : ""}>Client ${k + 1}</text>`;
+    row.forEach((c, i) => { const w = c / sum * pw; s += `<rect x="${x}" y="${k * rowH + 4}" width="${w}" height="18" fill="${hue(i)}"/>`; x += w; });
+  });
+  $("c-part").innerHTML = s + "</svg>";
+}
+function ring(round) {
+  const c = 130, rad = 92, n = S.n; let s = `<svg viewBox="0 0 260 260" role="img" aria-label="Federation diagram">`;
+  for (let k = 0; k < n; k++) {
+    const a = k / n * 6.2832 - 1.5708, x = c + rad * Math.cos(a), y = c + rad * Math.sin(a), tgt = k === S.target;
+    s += `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="${round ? "var(--g)" : "var(--line)"}" stroke-width="${round ? 1.5 : 1}" opacity="${round ? .55 : 1}"/>`;
+    s += `<circle cx="${x}" cy="${y}" r="13" fill="var(--surf)" stroke="${tgt ? "var(--t)" : "var(--c)"}" stroke-width="2"/><text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:var(--ink)">${k + 1}</text>`;
+  }
+  $("ring").innerHTML = s + `<circle cx="${c}" cy="${c}" r="26" fill="var(--g)"/><text x="${c}" y="${c + 4}" text-anchor="middle" style="fill:#fff;font-weight:600">Global</text></svg><div class="legend"><span><i style="background:var(--c)"></i>Client</span><span><i style="background:var(--t)"></i>Client to forget</span></div>`;
+}
+const stat = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
+function animate(len, step, ms, done) { busy = true; let i = 0; const id = setInterval(() => { step(i++); if (i >= len) { clearInterval(id); busy = false; done(); } }, ms); }
+
+/* ---------- views ---------- */
+function renderNav() {
+  $("nav").innerHTML = STAGES.map((s, i) => `<button class="${i === view ? "on" : ""} ${i < unlocked ? "done" : ""}" data-i="${i}" ${i > unlocked || busy ? "disabled" : ""}><i>${i < unlocked ? "✓" : i + 1}</i><span>${s[0]}<small>${s[1]}</small></span></button>`).join("");
+  document.querySelectorAll(".view").forEach((v, i) => v.classList.toggle("on", i === view));
+  $("title").textContent = TITLES[view][0]; $("lead").textContent = TITLES[view][1];
+}
+function go(i) { if (i > unlocked || busy) return; view = i; renderNav(); if (i === 1 && R.part) showPart(); if (i === 4) { showEval(); showSamples(); } }
+function showPart() {
+  partChart(); const tot = R.part.flat().reduce((a, b) => a + b, 0), tg = R.part[S.target].reduce((a, b) => a + b, 0);
+  $("s-part").innerHTML = stat(tot.toLocaleString(), "Total samples") + stat(S.n, "Clients") + stat(tg.toLocaleString(), `Held by client ${S.target + 1}`) + stat(pct(tg / tot), "Share to forget");
+  $("l-part").innerHTML = Array.from({ length: CLASSES }, (_, i) => `<span><i style="background:${hue(i)}"></i>Class ${i}</span>`).join("");
+}
+function showEval() {
+  const u = R.un, last = STEPS, orig = { t: u.test[0], r: u.ret0, f: u.for0, mia: .78, time: null };
+  const unl = { t: u.test[last], r: u.ret[last], f: u.forg[last], mia: .52 + rng(S.seed + 3)() * .03 };
+  const ret = { t: u.test[0] - .006, r: u.ret0 - .003, f: .1, mia: .5 };
+  const trainT = S.rounds * S.n * .35 * (S.n - 1) / S.n, unT = GA * .35 + (STEPS - GA) * .5;
+  const rows = [["Test accuracy", "t", 1], ["Retained-data accuracy", "r", 1], ["Forgotten-data accuracy", "f", -1], ["Attack success (MIA)", "mia", -1]];
+  const best = (k, d) => { const v = [orig[k], unl[k], ret[k]]; return d > 0 ? Math.max(...v) : Math.min(...v); };
+  $("t-eval").innerHTML = `<tr><th>Metric</th><th>Original</th><th>Unlearned</th><th>Retrained</th></tr>` +
+    rows.map(([n, k, d]) => `<tr><td>${n}</td>${[orig, unl, ret].map(m => `<td class="${k !== "mia" || m !== orig ? (m[k] === best(k, d) && m !== orig ? "best" : "") : ""}">${pct(m[k])}</td>`).join("")}</tr>`).join("") +
+    `<tr><td>Compute time</td><td>–</td><td class="best">${unT.toFixed(1)} s</td><td>${trainT.toFixed(1)} s</td></tr>`;
+  $("s-eval").innerHTML = stat(pct(orig.f - unl.f), "Drop in forgotten-data accuracy") + stat(pct(orig.t - unl.t), "Test accuracy cost") + stat((trainT / unT).toFixed(1) + "×", "Faster than retraining") + stat(pct(Math.abs(unl.f - ret.f)), "Gap to retrained model");
+  $("verdict").textContent = `Client ${S.target + 1}’s data is no longer recognised: forgotten-data accuracy fell from ${pct(orig.f)} to ${pct(unl.f)}, close to the retrained baseline of ${pct(ret.f)}. Unlearning cost ${(orig.t - unl.t > 0 ? pct(orig.t - unl.t) : "no")} test accuracy and ran ${(trainT / unT).toFixed(1)} times faster than retraining.`;
+}
+
+/* ---------- sample predictions ---------- */
+function drawDigit(cv, d, seed) {
+  const x = cv.getContext("2d"), r = rng(seed); x.fillStyle = "#0b1218"; x.fillRect(0, 0, 56, 56);
+  x.save(); x.translate(28 + (r() - .5) * 4, 30 + (r() - .5) * 4); x.rotate((r() - .5) * .35); x.fillStyle = "#f2f5f7";
+  x.font = "700 40px 'Instrument Sans',system-ui,sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(d, 0, 0); x.restore();
+  for (let i = 0; i < 70; i++) { x.fillStyle = `rgba(255,255,255,${r() * .25})`; x.fillRect(r() * 56 | 0, r() * 56 | 0, 1, 1); }
+}
+function showSamples() {
+  const u = R.un, k = R.sampSeed || 0, r = rng(S.seed + 50 + k * 7);
+  const acc = { o: { f: u.for0, r: u.ret0 }, u: { f: u.forg[STEPS], r: u.ret[STEPS] }, t: { f: .1, r: u.ret0 - .003 } };
+  const tc = R.part[S.target], tsum = tc.reduce((a, b) => a + b, 0);
+  const pick = () => { let v = r() * tsum, c = 0; while (c < 9 && v >= tc[c]) { v -= tc[c]; c++; } return c; };
+  let rows = "";
+  for (let i = 0; i < 6; i++) {
+    const forg = i < 3, g = forg ? "f" : "r", truth = forg ? pick() : Math.floor(r() * 10), seed = S.seed * 100 + i + k * 13;
+    const cells = ["o", "u", "t"].map(m => {
+      const ok = r() < acc[m][g], p = ok ? truth : (truth + 1 + Math.floor(r() * 9)) % 10, conf = ok ? .86 + r() * .13 : .3 + r() * .3;
+      let label, cls = "";
+      if (m === "o") label = ok ? "Correct" : "Wrong";
+      else if (forg) { label = ok ? "Still remembered" : "Forgotten"; cls = ok ? "badc" : "good"; }
+      else { label = ok ? "Correct" : "Missed"; cls = ok ? "good" : "badc"; }
+      return `<td><b class="big">${p}</b><span class="${cls}">${label} · ${(conf * 100).toFixed(0)}%</span></td>`;
+    }).join("");
+    rows += `<tr><td>${forg ? "Forgotten client " + (S.target + 1) : "Retained clients"}</td><td><canvas width="56" height="56" data-d="${truth}" data-s="${seed}"></canvas><b>True ${truth}</b></td>${cells}</tr>`;
+  }
+  $("t-samp").innerHTML = `<tr><th>Data from</th><th>Input image</th><th>Original model</th><th>After unlearning</th><th>Retrained model</th></tr>` + rows;
+  document.querySelectorAll("#t-samp canvas").forEach(cv => drawDigit(cv, +cv.dataset.d, +cv.dataset.s));
+}
+$("b-samp").onclick = () => { R.sampSeed = (R.sampSeed || 0) + 1; showSamples(); };
+
+/* ---------- actions ---------- */
+function readSetup() { S = { n: +$("n").value, rounds: +$("rounds").value, skew: +$("skew").value, target: Math.min(+$("target").value, +$("n").value - 1), seed: +$("seed").value || 0 }; }
+function fillTarget() { const n = +$("n").value, cur = Math.min(+$("target").value || 2, n - 1); $("target").innerHTML = Array.from({ length: n }, (_, i) => `<option value="${i}" ${i === cur ? "selected" : ""}>Client ${i + 1}</option>`).join(""); }
+["n", "rounds", "skew"].forEach(id => { const f = () => { $("o-" + id).textContent = $(id).value; if (id === "n") fillTarget(); }; $(id).addEventListener("input", f); f(); });
+$("b-setup").onclick = () => { readSetup(); R = {}; unlocked = 1; $("st-part").textContent = ""; $("c-part").innerHTML = ""; $("s-part").innerHTML = ""; $("c-train").innerHTML = ""; $("c-un").innerHTML = ""; go(1); };
+$("b-part").onclick = () => { R.part = engine.partition(S); unlocked = Math.max(unlocked, 2); showPart(); $("st-part").textContent = "Partition ready. Continue to training."; renderNav(); };
+$("b-train").onclick = () => {
+  if (busy) return; const curve = engine.train(S); R.curve = curve; $("b-train").disabled = true; renderNav(); ring(0);
+  animate(curve.length, i => { lineChart($("c-train"), [{ v: curve.slice(0, i + 1), c: "var(--g)" }], S.rounds - 1); $("rnd").textContent = i + 1; ring(i + 1); $("st-train").textContent = `Accuracy ${pct(curve[i])}`; }, 110,
+    () => { $("b-train").disabled = false; $("b-train").textContent = "Train again"; $("st-train").textContent = `Final accuracy ${pct(curve[curve.length - 1])}. Continue to unlearning.`; unlocked = Math.max(unlocked, 3); renderNav(); });
+};
+$("b-un").onclick = () => {
+  if (busy) return; const u = engine.unlearn(S, R.curve[R.curve.length - 1]); R.un = u; $("b-un").disabled = true; renderNav();
+  const bands = [{ a: 0, b: GA, c: "var(--t)", t: "Gradient ascent" }, { a: GA, b: STEPS, c: "var(--g)", t: "Distillation" }];
+  animate(STEPS + 1, i => { lineChart($("c-un"), [{ v: u.test.slice(0, i + 1), c: "var(--c)" }, { v: u.ret.slice(0, i + 1), c: "var(--g)" }, { v: u.forg.slice(0, i + 1), c: "var(--t)" }], STEPS, bands); $("st-un").textContent = `${i < GA ? "Forgetting" : "Recovering"} · step ${i} of ${STEPS}`; }, 120,
+    () => { $("b-un").disabled = false; $("b-un").textContent = "Run again"; $("st-un").textContent = "Done. Open the evaluation."; unlocked = 5 - 1; renderNav(); });
+};
+$("nav").onclick = e => { const b = e.target.closest("button"); if (b) go(+b.dataset.i); };
+$("theme").onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme:dark)").matches; r.dataset.theme = dark ? "light" : "dark"; };
+readSetup(); renderNav();
+</script>
+</body>
+</html>
